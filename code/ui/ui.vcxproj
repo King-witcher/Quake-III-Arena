@@ -211,7 +211,7 @@
       <OutputFile>../Debug/uix86_new.dll</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDatabaseFile>../Debug/ui.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>../Debug/uix86_new.pdb</ProgramDatabaseFile>
       <GenerateMapFile>true</GenerateMapFile>
       <MapFileName>.\Debug/uix86_new.map</MapFileName>
       <BaseAddress>0x40000000</BaseAddress>

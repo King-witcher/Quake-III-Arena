@@ -1324,6 +1324,11 @@ typedef struct entityState_s {
 	int		torsoAnim;		// mask off ANIM_TOGGLEBIT
 
 	int		generic1;
+
+	// transmitted so the wallhack ESP can show every player's vitals
+	int		health;
+	int		armor;
+	int		ammo;
 } entityState_t;
 
 typedef enum {

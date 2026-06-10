@@ -258,7 +258,7 @@ void GibEntity( gentity_t *self, int killer ) {
 			break;
 		}
 	}
-	G_AddEvent( self, EV_GIB_PLAYER, killer );
+	G_AddEvent(self, EV_GIB_PLAYER, killer);
 	self->takedamage = qfalse;
 	self->s.eType = ET_INVISIBLE;
 	self->r.contents = 0;
@@ -271,10 +271,6 @@ body_die
 */
 void body_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int meansOfDeath ) {
 	if ( self->health > GIB_HEALTH ) {
-		return;
-	}
-	if ( !g_blood.integer ) {
-		self->health = GIB_HEALTH+1;
 		return;
 	}
 
@@ -631,7 +627,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	memset( self->client->ps.powerups, 0, sizeof(self->client->ps.powerups) );
 
 	// never gib in a nodrop
-	if ( (self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP) && g_blood.integer) || meansOfDeath == MOD_SUICIDE) {
+	if (self->health <= GIB_HEALTH || meansOfDeath == MOD_SUICIDE) {
 		// gib death
 		GibEntity( self, killer );
 	} else {

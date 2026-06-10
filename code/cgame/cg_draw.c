@@ -167,10 +167,10 @@ void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char *text
 					int ofs = style == ITEM_TEXTSTYLE_SHADOWED ? 1 : 2;
 					colorBlack[3] = newColor[3];
 					trap_R_SetColor( colorBlack );
-					CG_Text_PaintChar(x + ofs, y - yadj + ofs, 
+					CG_Text_PaintChar(x + ofs, y - yadj + ofs,
 														glyph->imageWidth,
 														glyph->imageHeight,
-														useScale, 
+														useScale,
 														glyph->s,
 														glyph->t,
 														glyph->s2,
@@ -179,10 +179,10 @@ void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char *text
 					colorBlack[3] = 1.0;
 					trap_R_SetColor( newColor );
 				}
-				CG_Text_PaintChar(x, y - yadj, 
+				CG_Text_PaintChar(x, y - yadj,
 													glyph->imageWidth,
 													glyph->imageHeight,
-													useScale, 
+													useScale,
 													glyph->s,
 													glyph->t,
 													glyph->s2,
@@ -338,7 +338,7 @@ void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t head
 
 		// calculate distance so the head nearly fills the box
 		// assume heads are taller than wide
-		len = 0.7 * ( maxs[2] - mins[2] );		
+		len = 0.7 * ( maxs[2] - mins[2] );
 		origin[0] = len / 0.268;	// len / tan( fov/2 )
 
 		// allow per-model tweaking
@@ -383,7 +383,7 @@ void CG_DrawFlagModel( float x, float y, float w, float h, int team, qboolean fo
 
 		// calculate distance so the flag nearly fills the box
 		// assume heads are taller than wide
-		len = 0.5 * ( maxs[2] - mins[2] );		
+		len = 0.5 * ( maxs[2] - mins[2] );
 		origin[0] = len / 0.268;	// len / tan( fov/2 )
 
 		angles[YAW] = 60 * sin( cg.time / 2000.0 );;
@@ -471,7 +471,7 @@ static void CG_DrawStatusBarHead( float x ) {
 	angles[YAW] = cg.headStartYaw + ( cg.headEndYaw - cg.headStartYaw ) * frac;
 	angles[PITCH] = cg.headStartPitch + ( cg.headEndPitch - cg.headStartPitch ) * frac;
 
-	CG_DrawHead( x, 480 - size, size, size, 
+	CG_DrawHead( x, 480 - size, size, size,
 				cg.snap->ps.clientNum, angles );
 }
 #endif // MISSIONPACK
@@ -533,7 +533,7 @@ static void CG_DrawStatusBar( void ) {
 #ifdef MISSIONPACK
 	qhandle_t	handle;
 #endif
-	static float colors[4][4] = { 
+	static float colors[4][4] = {
 //		{ 0.2, 1.0, 0.2, 1.0 } , { 1.0, 0.2, 0.2, 1.0 }, {0.5, 0.5, 0.5, 1} };
 		{ 1.0f, 0.69f, 0.0f, 1.0f },    // normal
 		{ 1.0f, 0.2f, 0.2f, 1.0f },     // low health
@@ -612,7 +612,7 @@ static void CG_DrawStatusBar( void ) {
 				}
 			}
 			trap_R_SetColor( colors[color] );
-			
+
 			CG_DrawField (0, 432, 3, value);
 			trap_R_SetColor( NULL );
 
@@ -754,7 +754,7 @@ static float CG_DrawSnapshot( float y ) {
 	char		*s;
 	int			w;
 
-	s = va( "time:%i snap:%i cmd:%i", cg.snap->serverTime, 
+	s = va( "time:%i snap:%i cmd:%i", cg.snap->serverTime,
 		cg.latestSnapshotNum, cgs.serverCommandSequence );
 	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 
@@ -947,7 +947,7 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 				if (len > lwidth)
 					len = lwidth;
 
-//				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth + 
+//				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth +
 //					((lwidth/2 - len/2) * TINYCHAR_WIDTH);
 				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth;
 				CG_DrawStringExt( xx, y,
@@ -959,7 +959,7 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 
 			Com_sprintf (st, sizeof(st), "%3i %3i", ci->health,	ci->armor);
 
-			xx = x + TINYCHAR_WIDTH * 3 + 
+			xx = x + TINYCHAR_WIDTH * 3 +
 				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
 
 			CG_DrawStringExt( xx, y,
@@ -970,10 +970,10 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 			xx += TINYCHAR_WIDTH * 3;
 
 			if ( cg_weapons[ci->curWeapon].weaponIcon ) {
-				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
+				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 					cg_weapons[ci->curWeapon].weaponIcon );
 			} else {
-				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
+				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 					cgs.media.deferShader );
 			}
 
@@ -989,7 +989,7 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 					item = BG_FindItemForPowerup( j );
 
 					if (item) {
-						CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
+						CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 						trap_R_RegisterShader( item->icon ) );
 						if (right) {
 							xx -= TINYCHAR_WIDTH;
@@ -1022,7 +1022,7 @@ static void CG_DrawUpperRight( void ) {
 
 	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 1 ) {
 		y = CG_DrawTeamOverlay( y, qtrue, qtrue );
-	} 
+	}
 	if ( cg_drawSnapshot.integer ) {
 		y = CG_DrawSnapshot( y );
 	}
@@ -1175,7 +1175,7 @@ static float CG_DrawScores( float y ) {
 				color[2] = 0.5f;
 				color[3] = 0.33f;
 				CG_FillRect( x, y-4,  w, BIGCHAR_HEIGHT+8, color );
-			}	
+			}
 			CG_DrawBigString( x + 4, y, s, 1.0F);
 		}
 
@@ -1197,7 +1197,7 @@ static float CG_DrawScores( float y ) {
 				color[2] = 0.5f;
 				color[3] = 0.33f;
 				CG_FillRect( x, y-4,  w, BIGCHAR_HEIGHT+8, color );
-			}	
+			}
 			CG_DrawBigString( x + 4, y, s, 1.0F);
 		}
 
@@ -1232,9 +1232,9 @@ static float CG_DrawPowerups( float y ) {
 	int		color;
 	float	size;
 	float	f;
-	static float colors[2][4] = { 
-    { 0.2f, 1.0f, 0.2f, 1.0f } , 
-    { 1.0f, 0.2f, 0.2f, 1.0f } 
+	static float colors[2][4] = {
+    { 0.2f, 1.0f, 0.2f, 1.0f } ,
+    { 1.0f, 0.2f, 0.2f, 1.0f }
   };
 
 	ps = &cg.snap->ps;
@@ -1297,7 +1297,7 @@ static float CG_DrawPowerups( float y ) {
 			  trap_R_SetColor( modulate );
 		  }
 
-		  if ( cg.powerupActive == sorted[i] && 
+		  if ( cg.powerupActive == sorted[i] &&
 			  cg.time - cg.powerupTime < PULSE_TIME ) {
 			  f = 1.0 - ( ( (float)cg.time - cg.powerupTime ) / PULSE_TIME );
 			  size = ICON_SIZE * ( 1.0 + ( PULSE_SCALE - 1.0 ) * f );
@@ -1305,7 +1305,7 @@ static float CG_DrawPowerups( float y ) {
 			  size = ICON_SIZE;
 		  }
 
-		  CG_DrawPic( 640 - size, y + ICON_SIZE / 2 - size / 2, 
+		  CG_DrawPic( 640 - size, y + ICON_SIZE / 2 - size / 2,
 			  size, size, trap_R_RegisterShader( item->icon ) );
     }
 	}
@@ -1329,7 +1329,7 @@ static void CG_DrawLowerRight( void ) {
 
 	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 2 ) {
 		y = CG_DrawTeamOverlay( y, qtrue, qfalse );
-	} 
+	}
 
 	y = CG_DrawScores( y );
 	y = CG_DrawPowerups( y );
@@ -1363,7 +1363,7 @@ static int CG_DrawPickupItem( int y ) {
 			trap_R_SetColor( NULL );
 		}
 	}
-	
+
 	return y;
 }
 #endif // MISSIONPACK
@@ -1382,7 +1382,7 @@ static void CG_DrawLowerLeft( void ) {
 
 	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 3 ) {
 		y = CG_DrawTeamOverlay( y, qfalse, qfalse );
-	} 
+	}
 
 
 	y = CG_DrawPickupItem( y );
@@ -1456,8 +1456,8 @@ static void CG_DrawTeamInfo( void ) {
 		hcolor[3] = 1.0f;
 
 		for (i = cgs.teamChatPos - 1; i >= cgs.teamLastChatPos; i--) {
-			CG_DrawStringExt( CHATLOC_X + TINYCHAR_WIDTH, 
-				CHATLOC_Y - (cgs.teamChatPos - i)*TINYCHAR_HEIGHT, 
+			CG_DrawStringExt( CHATLOC_X + TINYCHAR_WIDTH,
+				CHATLOC_Y - (cgs.teamChatPos - i)*TINYCHAR_HEIGHT,
 				cgs.teamChatMsgs[i % chatHeight], hcolor, qfalse, qfalse,
 				TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
 		}
@@ -1471,7 +1471,7 @@ CG_DrawHoldableItem
 ===================
 */
 #ifndef MISSIONPACK
-static void CG_DrawHoldableItem( void ) { 
+static void CG_DrawHoldableItem( void ) {
 	int		value;
 
 	value = cg.snap->ps.stats[STAT_HOLDABLE_ITEM];
@@ -1490,7 +1490,7 @@ CG_DrawPersistantPowerup
 ===================
 */
 #if 0 // sos001208 - DEAD
-static void CG_DrawPersistantPowerup( void ) { 
+static void CG_DrawPersistantPowerup( void ) {
 	int		value;
 
 	value = cg.snap->ps.stats[STAT_PERSISTANT_POWERUP];
@@ -1508,7 +1508,7 @@ static void CG_DrawPersistantPowerup( void ) {
 CG_DrawReward
 ===================
 */
-static void CG_DrawReward( void ) { 
+static void CG_DrawReward( void ) {
 	float	*color;
 	int		i, count;
 	float	x, y;
@@ -1962,8 +1962,8 @@ static void CG_DrawCrosshair(void) {
 	}
 	hShader = cgs.media.crosshairShader[ ca % NUM_CROSSHAIRS ];
 
-	trap_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (cg.refdef.width - w), 
-		y + cg.refdef.y + 0.5 * (cg.refdef.height - h), 
+	trap_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (cg.refdef.width - w),
+		y + cg.refdef.y + 0.5 * (cg.refdef.height - h),
 		w, h, 0, 0, 1, 1, hShader );
 }
 
@@ -1982,7 +1982,7 @@ static void CG_ScanForCrosshairEntity( void ) {
 	VectorCopy( cg.refdef.vieworg, start );
 	VectorMA( start, 131072, cg.refdef.viewaxis[0], end );
 
-	CG_Trace( &trace, start, vec3_origin, vec3_origin, end, 
+	CG_Trace( &trace, start, vec3_origin, vec3_origin, end,
 		cg.snap->ps.clientNum, CONTENTS_SOLID|CONTENTS_BODY );
 	if ( trace.entityNum >= MAX_CLIENTS ) {
 		return;
@@ -2174,7 +2174,7 @@ static qboolean CG_DrawScoreboard() {
 			return qfalse;
 		}
 		fade = *fadeColor;
-	}																					  
+	}
 
 
 	if (menuScoreboard == NULL) {
@@ -2346,7 +2346,7 @@ static void CG_DrawWarmup( void ) {
 	}
 
 	if ( sec < 0 ) {
-		s = "Waiting for players";		
+		s = "Waiting for players";
 		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 		CG_DrawBigString(320 - w / 2, 24, s, 1.0F);
 		cg.warmupCount = 0;
@@ -2379,7 +2379,7 @@ static void CG_DrawWarmup( void ) {
 			} else {
 				cw = GIANT_WIDTH;
 			}
-			CG_DrawStringExt( 320 - w * cw/2, 20,s, colorWhite, 
+			CG_DrawStringExt( 320 - w * cw/2, 20,s, colorWhite,
 					qfalse, qtrue, cw, (int)(cw * 1.5f), 0 );
 #endif
 		}
@@ -2411,7 +2411,7 @@ static void CG_DrawWarmup( void ) {
 		} else {
 			cw = GIANT_WIDTH;
 		}
-		CG_DrawStringExt( 320 - w * cw/2, 25,s, colorWhite, 
+		CG_DrawStringExt( 320 - w * cw/2, 25,s, colorWhite,
 				qfalse, qtrue, cw, (int)(cw * 1.1f), 0 );
 #endif
 	}
@@ -2463,14 +2463,14 @@ static void CG_DrawWarmup( void ) {
 		CG_Text_Paint(320 - w / 2, 125, scale, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
 #else
 	w = CG_DrawStrlen( s );
-	CG_DrawStringExt( 320 - w * cw/2, 70, s, colorWhite, 
+	CG_DrawStringExt( 320 - w * cw/2, 70, s, colorWhite,
 			qfalse, qtrue, cw, (int)(cw * 1.5), 0 );
 #endif
 }
 
 //==================================================================================
 #ifdef MISSIONPACK
-/* 
+/*
 =================
 CG_DrawTimedMenus
 =================
@@ -2491,6 +2491,158 @@ void CG_DrawTimedMenus() {
 CG_Draw2D
 =================
 */
+/*
+=================
+CG_WorldToScreen
+
+Projects a world coordinate into 640x480 virtual screen space.
+Returns qfalse when the point is behind the view plane.
+=================
+*/
+static qboolean CG_WorldToScreen( const vec3_t world, float *x, float *y ) {
+	vec3_t	trans, vfwd, vright, vup;
+	float	z, xp, yp;
+
+	AngleVectors( cg.refdefViewAngles, vfwd, vright, vup );
+	VectorSubtract( world, cg.refdef.vieworg, trans );
+
+	z = DotProduct( trans, vfwd );
+	if ( z < 1.0f ) {
+		return qfalse;			// behind us
+	}
+
+	xp = DotProduct( trans, vright );
+	yp = DotProduct( trans, vup );
+
+	*x = 320.0f + 320.0f * xp / ( z * (float)tan( cg.refdef.fov_x * ( M_PI / 360.0 ) ) );
+	*y = 240.0f - 240.0f * yp / ( z * (float)tan( cg.refdef.fov_y * ( M_PI / 360.0 ) ) );
+	return qtrue;
+}
+
+/*
+=================
+CG_DrawWallhack
+
+Cheat (cg_wallhack, CVAR_CHEAT): for every player in the current snapshot,
+draws an ESP box at their position with health/armor bars, the selected
+weapon icon above the head, the player name, and health/armor/ammo numbers.
+Drawn in 2D after the scene, so it always shows through walls.
+=================
+*/
+static void CG_DrawWallhack( void ) {
+	int				i, num, localNum;
+	int				health, armor, ammo, weapon;
+	centity_t		*cent;
+	entityState_t	*es;
+	clientInfo_t	*ci;
+	vec3_t			mid, feet, head;
+	float			fx, fy, hx, hy;
+	float			boxX, boxY, boxW, boxH, cx, frac;
+	int				w;
+	char			text[64];
+	vec4_t			col;
+	const vec4_t	colDark   = { 0.0f, 0.0f, 0.0f, 0.6f };
+	const vec4_t	colWhite  = { 1.0f, 1.0f, 1.0f, 1.0f };
+	const vec4_t	colEnemy  = { 1.0f, 0.15f, 0.15f, 1.0f };
+	const vec4_t	colFriend = { 0.2f, 1.0f, 0.2f, 1.0f };
+	const vec4_t	colArmor  = { 0.3f, 0.6f, 1.0f, 0.9f };
+
+	// if ( !cg_wallhack.integer || !cg.snap ) {
+	// 	return;
+	// }
+
+	localNum = cg.snap->ps.clientNum;
+
+	for ( i = 0 ; i < cg.snap->numEntities ; i++ ) {
+		es = &cg.snap->entities[i];
+
+		if ( es->eType != ET_PLAYER ) {
+			continue;
+		}
+		if ( es->number == localNum ) {
+			continue;					// never ESP ourselves
+		}
+		if ( es->eFlags & EF_DEAD ) {
+			continue;
+		}
+
+		num  = es->number;
+		cent = &cg_entities[ num ];
+
+		// project the vertical span: feet (origin-24) to top of head (origin+32)
+		VectorCopy( cent->lerpOrigin, mid );
+		VectorCopy( mid, feet );	feet[2] -= 24.0f;
+		VectorCopy( mid, head );	head[2] += 32.0f;
+
+		if ( !CG_WorldToScreen( feet, &fx, &fy ) ) {
+			continue;
+		}
+		if ( !CG_WorldToScreen( head, &hx, &hy ) ) {
+			continue;
+		}
+
+		boxH = fy - hy;					// feet are lower on screen (larger y)
+		if ( boxH < 3.0f ) {
+			continue;					// too far away / degenerate
+		}
+		boxW = boxH * 0.5f;
+		cx   = ( fx + hx ) * 0.5f;
+		boxX = cx - boxW * 0.5f;
+		boxY = hy;
+
+		health = cent->currentState.health;
+		armor  = cent->currentState.armor;
+		ammo   = cent->currentState.ammo;
+		weapon = cent->currentState.weapon;
+		ci     = &cgs.clientinfo[ es->clientNum ];
+
+		// box outline, colored by team (red = enemy, green = teammate)
+		if ( cgs.gametype >= GT_TEAM && ci->team == cgs.clientinfo[ localNum ].team ) {
+			Vector4Copy( colFriend, col );
+		} else {
+			Vector4Copy( colEnemy, col );
+		}
+		CG_DrawRect( boxX, boxY, boxW, boxH, 1.0f, col );
+
+		// health bar (green -> red) just above the box
+		frac = Com_Clamp( 0.0f, 1.0f, health / 100.0f );
+		CG_FillRect( boxX, boxY - 7.0f, boxW, 2.0f, colDark );
+		col[0] = 1.0f - frac;	col[1] = frac;	col[2] = 0.1f;	col[3] = 0.9f;
+		CG_FillRect( boxX, boxY - 7.0f, boxW * frac, 2.0f, col );
+
+		// armor bar (blue) below the health bar
+		frac = Com_Clamp( 0.0f, 1.0f, armor / 100.0f );
+		CG_FillRect( boxX, boxY - 4.0f, boxW, 2.0f, colDark );
+		CG_FillRect( boxX, boxY - 4.0f, boxW * frac, 2.0f, colArmor );
+
+		// selected weapon icon above the head
+		if ( weapon > WP_NONE && weapon < WP_NUM_WEAPONS ) {
+			CG_RegisterWeapon( weapon );
+			if ( cg_weapons[ weapon ].weaponIcon ) {
+				CG_DrawPic( cx - 8.0f, boxY - 26.0f, 16.0f, 16.0f,
+							cg_weapons[ weapon ].weaponIcon );
+			}
+		}
+
+		// player name above the weapon icon
+		if ( ci->infoValid && ci->name[0] ) {
+			w = CG_DrawStrlen( ci->name ) * 8;
+			CG_DrawStringExt( (int)( cx - w * 0.5f ), (int)( boxY - 40.0f ),
+				ci->name, colWhite, qfalse, qtrue, 8, 12, 0 );
+		}
+
+		// health / armor / ammo numbers below the box
+		if ( weapon == WP_GAUNTLET ) {
+			Com_sprintf( text, sizeof( text ), "%i / %i", health, armor );
+		} else {
+			Com_sprintf( text, sizeof( text ), "%i / %i / %i", health, armor, ammo );
+		}
+		w = CG_DrawStrlen( text ) * 8;
+		CG_DrawStringExt( (int)( cx - w * 0.5f ), (int)( boxY + boxH + 2.0f ),
+			text, colWhite, qtrue, qtrue, 8, 12, 0 );
+	}
+}
+
 static void CG_Draw2D( void ) {
 #ifdef MISSIONPACK
 	if (cgs.orderPending && cg.time > cgs.orderTime) {
@@ -2532,12 +2684,12 @@ static void CG_Draw2D( void ) {
 #else
 			CG_DrawStatusBar();
 #endif
-      
+
 			CG_DrawAmmoWarning();
 
 #ifdef MISSIONPACK
 			CG_DrawProxWarning();
-#endif      
+#endif
 			CG_DrawCrosshair();
 			CG_DrawCrosshairNames();
 			CG_DrawWeaponSelect();
@@ -2549,7 +2701,7 @@ static void CG_Draw2D( void ) {
 #endif
 			CG_DrawReward();
 		}
-    
+
 		if ( cgs.gametype >= GT_TEAM ) {
 #ifndef MISSIONPACK
 			CG_DrawTeamInfo();
@@ -2559,6 +2711,8 @@ static void CG_Draw2D( void ) {
 
 	CG_DrawVote();
 	CG_DrawTeamVote();
+
+	CG_DrawWallhack();
 
 	CG_DrawLagometer();
 

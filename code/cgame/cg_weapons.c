@@ -216,14 +216,14 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 	vec3_t axis[36], move, move2, next_move, vec, temp;
 	float  len;
 	int    i, j, skip;
- 
+
 	localEntity_t *le;
 	refEntity_t   *re;
- 
-#define RADIUS   4
+
+#define RADIUS   6
 #define ROTATION 1
 #define SPACING  5
- 
+
 	start[2] -= 4;
 	VectorCopy (start, move);
 	VectorSubtract (end, start, vec);
@@ -232,22 +232,22 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 	for (i = 0 ; i < 36; i++) {
 		RotatePointAroundVector(axis[i], vec, temp, i * 10);//banshee 2.4 was 10
 	}
- 
+
 	le = CG_AllocLocalEntity();
 	re = &le->refEntity;
- 
+
 	le->leType = LE_FADE_RGB;
 	le->startTime = cg.time;
 	le->endTime = cg.time + cg_railTrailTime.value;
 	le->lifeRate = 1.0 / (le->endTime - le->startTime);
- 
+
 	re->shaderTime = cg.time / 1000.0f;
 	re->reType = RT_RAIL_CORE;
 	re->customShader = cgs.media.railCoreShader;
- 
+
 	VectorCopy(start, re->origin);
 	VectorCopy(end, re->oldorigin);
- 
+
 	re->shaderRGBA[0] = ci->color1[0] * 255;
     re->shaderRGBA[1] = ci->color1[1] * 255;
     re->shaderRGBA[2] = ci->color1[2] * 255;
@@ -259,7 +259,7 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 	le->color[3] = 1.0f;
 
 	AxisClear( re->axis );
- 
+
 	VectorMA(move, 20, vec, move);
 	VectorCopy(move, next_move);
 	VectorScale (vec, SPACING, vec);
@@ -271,7 +271,7 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 		return;
 	}
 	skip = -1;
- 
+
 	j = 18;
     for (i = 0; i < len; i += SPACING) {
 		if (i != skip) {
@@ -370,13 +370,13 @@ static void CG_RocketTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	for ( ; t <= ent->trailTime ; t += step ) {
 		BG_EvaluateTrajectory( &es->pos, t, lastPos );
 
-		smoke = CG_SmokePuff( lastPos, up, 
-					  wi->trailRadius, 
+		smoke = CG_SmokePuff( lastPos, up,
+					  wi->trailRadius,
 					  1, 1, 1, 0.33f,
-					  wi->wiTrailTime, 
+					  wi->wiTrailTime,
 					  t,
 					  0,
-					  0, 
+					  0,
 					  cgs.media.smokePuffShader );
 		// use the optimized local entity add
 		smoke->leType = LE_SCALE_FADE;
@@ -438,13 +438,13 @@ static void CG_NailTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	for ( ; t <= ent->trailTime ; t += step ) {
 		BG_EvaluateTrajectory( &es->pos, t, lastPos );
 
-		smoke = CG_SmokePuff( lastPos, up, 
-					  wi->trailRadius, 
+		smoke = CG_SmokePuff( lastPos, up,
+					  wi->trailRadius,
 					  1, 1, 1, 0.33f,
-					  wi->wiTrailTime, 
+					  wi->wiTrailTime,
 					  t,
 					  0,
-					  0, 
+					  0,
 					  cgs.media.nailPuffShader );
 		// use the optimized local entity add
 		smoke->leType = LE_SCALE_FADE;
@@ -455,7 +455,7 @@ static void CG_NailTrail( centity_t *ent, const weaponInfo_t *wi ) {
 
 /*
 ==========================
-CG_NailTrail
+CG_PlasmaTrail
 ==========================
 */
 static void CG_PlasmaTrail( centity_t *cent, const weaponInfo_t *wi ) {
@@ -744,9 +744,9 @@ void CG_RegisterWeapon( int weaponNum ) {
 		weaponInfo->missileSound = trap_S_RegisterSound( "sound/weapons/rocket/rockfly.wav", qfalse );
 		weaponInfo->missileTrailFunc = CG_RocketTrail;
 		weaponInfo->missileDlight = 200;
-		weaponInfo->wiTrailTime = 2000;
-		weaponInfo->trailRadius = 64;
-		
+		weaponInfo->wiTrailTime = 500;
+		weaponInfo->trailRadius = 32;
+
 		MAKERGB( weaponInfo->missileDlightColor, 1, 0.75f, 0 );
 		MAKERGB( weaponInfo->flashDlightColor, 1, 0.75f, 0 );
 
@@ -860,7 +860,7 @@ void CG_RegisterItemVisuals( int itemNum ) {
 	//
 	// powerups have an accompanying ring or sphere
 	//
-	if ( item->giType == IT_POWERUP || item->giType == IT_HEALTH || 
+	if ( item->giType == IT_POWERUP || item->giType == IT_HEALTH ||
 		item->giType == IT_ARMOR || item->giType == IT_HOLDABLE ) {
 		if ( item->world_model[1] ) {
 			itemInfo->models[1] = trap_R_RegisterModel( item->world_model[1] );
@@ -886,23 +886,23 @@ CG_MapTorsoToWeaponFrame
 static int CG_MapTorsoToWeaponFrame( clientInfo_t *ci, int frame ) {
 
 	// change weapon
-	if ( frame >= ci->animations[TORSO_DROP].firstFrame 
+	if ( frame >= ci->animations[TORSO_DROP].firstFrame
 		&& frame < ci->animations[TORSO_DROP].firstFrame + 9 ) {
 		return frame - ci->animations[TORSO_DROP].firstFrame + 6;
 	}
 
 	// stand attack
-	if ( frame >= ci->animations[TORSO_ATTACK].firstFrame 
+	if ( frame >= ci->animations[TORSO_ATTACK].firstFrame
 		&& frame < ci->animations[TORSO_ATTACK].firstFrame + 6 ) {
 		return 1 + frame - ci->animations[TORSO_ATTACK].firstFrame;
 	}
 
 	// stand attack 2
-	if ( frame >= ci->animations[TORSO_ATTACK2].firstFrame 
+	if ( frame >= ci->animations[TORSO_ATTACK2].firstFrame
 		&& frame < ci->animations[TORSO_ATTACK2].firstFrame + 6 ) {
 		return 1 + frame - ci->animations[TORSO_ATTACK2].firstFrame;
 	}
-	
+
 	return 0;
 }
 
@@ -937,7 +937,7 @@ static void CG_CalculateWeaponPosition( vec3_t origin, vec3_t angles ) {
 	if ( delta < LAND_DEFLECT_TIME ) {
 		origin[2] += cg.landChange*0.25 * delta / LAND_DEFLECT_TIME;
 	} else if ( delta < LAND_DEFLECT_TIME + LAND_RETURN_TIME ) {
-		origin[2] += cg.landChange*0.25 * 
+		origin[2] += cg.landChange*0.25 *
 			(LAND_DEFLECT_TIME + LAND_RETURN_TIME - delta) / LAND_RETURN_TIME;
 	}
 
@@ -971,6 +971,7 @@ so the endpoint will reflect the simulated strike (lagging the predicted
 angle)
 ===============
 */
+#if 1
 static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	trace_t  trace;
 	refEntity_t  beam;
@@ -1024,7 +1025,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	VectorMA( muzzlePoint, LIGHTNING_RANGE, forward, endPoint );
 
 	// see if it hit a wall
-	CG_Trace( &trace, muzzlePoint, vec3_origin, vec3_origin, endPoint, 
+	CG_Trace( &trace, muzzlePoint, vec3_origin, vec3_origin, endPoint,
 		cent->currentState.number, MASK_SHOT );
 
 	// this is the endpoint
@@ -1059,8 +1060,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 		trap_R_AddRefEntityToScene( &beam );
 	}
 }
-/*
-
+#else
 static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	trace_t		trace;
 	refEntity_t		beam;
@@ -1086,7 +1086,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	VectorMA( muzzlePoint, LIGHTNING_RANGE, forward, endPoint );
 
 	// see if it hit a wall
-	CG_Trace( &trace, muzzlePoint, vec3_origin, vec3_origin, endPoint, 
+	CG_Trace( &trace, muzzlePoint, vec3_origin, vec3_origin, endPoint,
 		cent->currentState.number, MASK_SHOT );
 
 	// this is the endpoint
@@ -1121,7 +1121,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 		trap_R_AddRefEntityToScene( &beam );
 	}
 }
-*/
+#endif
 
 /*
 ===============
@@ -1242,13 +1242,13 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// set custom shading for railgun refire rate
 	if ( ps ) {
-		if ( cg.predictedPlayerState.weapon == WP_RAILGUN 
+		if ( cg.predictedPlayerState.weapon == WP_RAILGUN
 			&& cg.predictedPlayerState.weaponstate == WEAPON_FIRING ) {
 			float	f;
 
 			f = (float)cg.predictedPlayerState.weaponTime / 1500;
 			gun.shaderRGBA[1] = 0;
-			gun.shaderRGBA[0] = 
+			gun.shaderRGBA[0] =
 			gun.shaderRGBA[2] = 255 * ( 1.0 - f );
 		} else {
 			gun.shaderRGBA[0] = 255;
@@ -1309,7 +1309,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// add the flash
 	if ( ( weaponNum == WP_LIGHTNING || weaponNum == WP_GAUNTLET || weaponNum == WP_GRAPPLING_HOOK )
-		&& ( nonPredictedCent->currentState.eFlags & EF_FIRING ) ) 
+		&& ( nonPredictedCent->currentState.eFlags & EF_FIRING ) )
 	{
 		// continuous flash
 	} else {
@@ -1928,7 +1928,7 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 	// create the explosion
 	//
 	if ( mod ) {
-		le = CG_MakeExplosion( origin, dir, 
+		le = CG_MakeExplosion( origin, dir,
 							   mod,	shader,
 							   duration, isSprite );
 		le->light = light;
@@ -2049,7 +2049,7 @@ hit splashes
 ================
 */
 static void CG_ShotgunPattern( vec3_t origin, vec3_t origin2, int seed, int otherEntNum ) {
-	int			i;
+	int			i, j, count_sqrt;
 	float		r, u;
 	vec3_t		end;
 	vec3_t		forward, right, up;
@@ -2060,16 +2060,33 @@ static void CG_ShotgunPattern( vec3_t origin, vec3_t origin2, int seed, int othe
 	PerpendicularVector( right, forward );
 	CrossProduct( forward, right, up );
 
-	// generate the "random" spread pattern
-	for ( i = 0 ; i < DEFAULT_SHOTGUN_COUNT ; i++ ) {
-		r = Q_crandom( &seed ) * DEFAULT_SHOTGUN_SPREAD * 16;
-		u = Q_crandom( &seed ) * DEFAULT_SHOTGUN_SPREAD * 16;
+	count_sqrt = sqrtf(DEFAULT_SHOTGUN_COUNT);
+
+#if 1
+	for (i = -count_sqrt; i < count_sqrt; i++) {
+		for (j = -count_sqrt; j < count_sqrt; j++) {
+			r = i * DEFAULT_SHOTGUN_SPREAD * 16 / count_sqrt;
+			u = j * DEFAULT_SHOTGUN_SPREAD * 16 / count_sqrt;
+
+			VectorMA(origin, 8192 * 16, forward, end);
+			VectorMA(end, r, right, end);
+			VectorMA(end, u, up, end);
+
+			CG_ShotgunPellet(origin, end, otherEntNum);
+		}
+	}
+
+#else
+	for ( i = -DEFAULT_SHOTGUN_COUNT / 2; i < DEFAULT_SHOTGUN_COUNT / 2 ; i++ ) {
+		r = i * DEFAULT_SHOTGUN_SPREAD * 16;
+		u = i * DEFAULT_SHOTGUN_SPREAD * 16;
 		VectorMA( origin, 8192 * 16, forward, end);
 		VectorMA (end, r, right, end);
 		VectorMA (end, u, up, end);
 
 		CG_ShotgunPellet( origin, end, otherEntNum );
 	}
+#endif
 }
 
 /*

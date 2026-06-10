@@ -835,7 +835,10 @@ netField_t	entityStateFields[] =
 { NETF(angles2[0]), 0 },
 { NETF(angles2[2]), 0 },
 { NETF(constantLight), 32 },
-{ NETF(frame), 16 }
+{ NETF(frame), 16 },
+{ NETF(health), 10 },
+{ NETF(armor), 10 },
+{ NETF(ammo), 12 }
 };
 
 

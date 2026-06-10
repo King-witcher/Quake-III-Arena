@@ -1,0 +1,98 @@
+{
+  // .vscode/launch.json
+  // F5 inicia o quake3.exe que voce compila em code/Debug.
+  // Dados do jogo (.pk3) vem do seu install da Steam via fs_basepath.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // PADRAO (F5): COMPILA sozinho (preLaunchTask) e roda com as DLLs nativas.
+      // Edite o codigo C e aperte F5 -> recompila e ja sobe com suas mudancas.
+      "name": "Quake III (compila + roda, DLLs nativas)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "preLaunchTask": "Compilar Quake III (Debug, v145)",
+      "program": "${workspaceFolder}/code/Debug/quake3.exe",
+      "args": [
+        "+set", "developer", "1",
+        "+set", "sv_pure", "0",
+        "+set", "vm_game", "0",
+        "+set", "vm_cgame", "0",
+        "+set", "vm_ui", "0",
+        "+set", "fs_basepath", "C:/Program Files (x86)/Steam/steamapps/common/Quake 3 Arena",
+        "+set", "fs_homepath", "${workspaceFolder}/run",
+        "+set", "fs_game", "baseq3"
+      ],
+      "cwd": "${workspaceFolder}/code/Debug",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "justMyCode": false
+    },
+    {
+      // Sem rebuild: usa as DLLs nativas ja compiladas (cgamex86/qagamex86/uix86),
+      // entao suas alteracoes em game/cgame/ui ficam ativas. Build Debug obrigatoria.
+      "name": "Quake III (Debug, DLLs nativas)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/code/Debug/quake3.exe",
+      "args": [
+        "+set", "developer", "1",
+        "+set", "sv_pure", "0",
+        "+set", "vm_game", "0",
+        "+set", "vm_cgame", "0",
+        "+set", "vm_ui", "0",
+        "+set", "fs_basepath", "C:/Program Files (x86)/Steam/steamapps/common/Quake 3 Arena",
+        "+set", "fs_homepath", "${workspaceFolder}/run",
+        "+set", "fs_game", "baseq3"
+      ],
+      // cwd na pasta do exe garante que o LoadLibrary ache as DLLs nativas.
+      "cwd": "${workspaceFolder}/code/Debug",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "justMyCode": false
+    },
+    {
+      // Jogo padrao: usa os QVMs de dentro do pak0.pk3 (ignora suas mudancas de gameplay).
+      "name": "Quake III (Debug, QVMs do pak)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/code/Debug/quake3.exe",
+      "args": [
+        "+set", "developer", "1",
+        "+set", "sv_pure", "0",
+        "+set", "fs_basepath", "C:/Program Files (x86)/Steam/steamapps/common/Quake 3 Arena",
+        "+set", "fs_homepath", "${workspaceFolder}/run",
+        "+set", "fs_game", "baseq3"
+      ],
+      "cwd": "${workspaceFolder}/code/Debug",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "justMyCode": false
+    },
+    {
+      // Build Release (otimizada). Atencao: Release exige as DLLs nativas dentro de
+      // <fs_basepath>/baseq3 ou <fs_homepath>/baseq3 e mostra um aviso de seguranca ao
+      // carregar a DLL. Para gameplay modificada, prefira a config Debug acima.
+      "name": "Quake III (Release, QVMs do pak)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/code/Release/quake3.exe",
+      "args": [
+        "+set", "sv_pure", "0",
+        "+set", "fs_basepath", "C:/Program Files (x86)/Steam/steamapps/common/Quake 3 Arena",
+        "+set", "fs_homepath", "${workspaceFolder}/run",
+        "+set", "fs_game", "baseq3"
+      ],
+      "cwd": "${workspaceFolder}/code/Release",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "justMyCode": false
+    },
+    {
+      "name": "Anexar ao quake3.exe em execucao",
+      "type": "cppvsdbg",
+      "request": "attach",
+      "processName": "quake3.exe",
+      "justMyCode": false
+    }
+  ]
+}

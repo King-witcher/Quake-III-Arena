@@ -1521,6 +1521,11 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
+
+	// wallhack ESP: broadcast player vitals so all clients can display them
+	s->health = ps->stats[STAT_HEALTH] > 0 ? ps->stats[STAT_HEALTH] : 0;
+	s->armor  = ps->stats[STAT_ARMOR]  > 0 ? ps->stats[STAT_ARMOR]  : 0;
+	s->ammo   = ps->ammo[ps->weapon]   > 0 ? ps->ammo[ps->weapon]   : 0;
 }
 
 /*
@@ -1601,4 +1606,9 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
+
+	// wallhack ESP: broadcast player vitals so all clients can display them
+	s->health = ps->stats[STAT_HEALTH] > 0 ? ps->stats[STAT_HEALTH] : 0;
+	s->armor  = ps->stats[STAT_ARMOR]  > 0 ? ps->stats[STAT_ARMOR]  : 0;
+	s->ammo   = ps->ammo[ps->weapon]   > 0 ? ps->ammo[ps->weapon]   : 0;
 }

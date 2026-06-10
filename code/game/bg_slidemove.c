@@ -317,9 +317,7 @@ void PM_StepSlideMove( qboolean gravity ) {
 				PM_AddEvent( EV_STEP_16 );
 			}
 		}
-		if ( pm->debugLevel ) {
-			Com_Printf("%i:stepped\n", c_pmove);
-		}
+		//Com_Printf("%i:stepped\n", c_pmove);
 	}
 }
 
