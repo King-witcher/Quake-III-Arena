@@ -405,6 +405,11 @@ extern void UI_PreferencesMenu( void );
 extern void Preferences_Cache( void );
 
 //
+// ui_cheats.c
+//
+extern void UI_CheatsMenu( void );
+
+//
 // ui_specifyleague.c
 //
 extern void UI_SpecifyLeagueMenu( void );

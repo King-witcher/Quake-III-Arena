@@ -2547,9 +2547,9 @@ static void CG_DrawWallhack( void ) {
 	const vec4_t	colFriend = { 0.2f, 1.0f, 0.2f, 1.0f };
 	const vec4_t	colArmor  = { 0.3f, 0.6f, 1.0f, 0.9f };
 
-	// if ( !cg_wallhack.integer || !cg.snap ) {
-	// 	return;
-	// }
+	if ( !cg_wallhack.integer || !cg.snap ) {
+		return;
+	}
 
 	localNum = cg.snap->ps.clientNum;
 

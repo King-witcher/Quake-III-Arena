@@ -54,6 +54,8 @@ kbutton_t	in_up, in_down;
 
 kbutton_t	in_buttons[16];
 
+kbutton_t	in_aimbot;		// aimbot hold key (default ALT), consumed by CL_Aimbot
+
 
 qboolean	in_mlooking;
 
@@ -218,6 +220,8 @@ void IN_StrafeUp(void) {IN_KeyUp(&in_strafe);}
 
 void IN_Button0Down(void) {IN_KeyDown(&in_buttons[0]);}
 void IN_Button0Up(void) {IN_KeyUp(&in_buttons[0]);}
+void IN_AimbotDown(void) {IN_KeyDown(&in_aimbot);}
+void IN_AimbotUp(void) {IN_KeyUp(&in_aimbot);}
 void IN_Button1Down(void) {IN_KeyDown(&in_buttons[1]);}
 void IN_Button1Up(void) {IN_KeyUp(&in_buttons[1]);}
 void IN_Button2Down(void) {IN_KeyDown(&in_buttons[2]);}
@@ -521,6 +525,42 @@ void CL_FinishMove( usercmd_t *cmd ) {
 
 /*
 =================
+CL_Aimbot
+
+While the +aimbot key is held, snap the view to the angles the cgame published
+in cl_aimbot_* this frame. Entirely gated by cgame's cg_aimbot (CVAR_CHEAT): if
+cheats are off, cgame never sets cl_aimbot_valid, so this does nothing.
+=================
+*/
+static void CL_Aimbot( void ) {
+	float	targetYaw, targetPitch, smooth;
+
+	if ( !in_aimbot.active ) {
+		return;
+	}
+	if ( !Cvar_VariableIntegerValue( "cl_aimbot_valid" ) ) {
+		return;
+	}
+
+	// the cgame publishes WORLD view angles, but cl.viewangles is a command angle:
+	// the server offsets it by delta_angles (set on spawn) to get the real view
+	// (ps.viewangles = cl.viewangles + SHORT2ANGLE(delta_angles)). Subtract it here
+	// or the aim lands off by that constant angle.
+	targetYaw   = Cvar_VariableValue( "cl_aimbot_yaw" )   - SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] );
+	targetPitch = Cvar_VariableValue( "cl_aimbot_pitch" ) - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] );
+
+	// cg_aimbotSmooth: fraction of the gap closed each frame (1 = instant snap)
+	smooth = Cvar_VariableValue( "cg_aimbotSmooth" );
+	if ( smooth <= 0.0f || smooth > 1.0f ) {
+		smooth = 1.0f;
+	}
+
+	cl.viewangles[YAW]   = LerpAngle( cl.viewangles[YAW],   targetYaw,   smooth );
+	cl.viewangles[PITCH] = LerpAngle( cl.viewangles[PITCH], targetPitch, smooth );
+}
+
+/*
+=================
 CL_CreateCmd
 =================
 */
@@ -552,6 +592,9 @@ usercmd_t CL_CreateCmd( void ) {
 	} else if ( oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
 		cl.viewangles[PITCH] = oldAngles[PITCH] - 90;
 	} 
+
+	// aimbot: while +aimbot is held, override the view with cgame's target angles
+	CL_Aimbot();
 
 	// store out the final values
 	CL_FinishMove( &cmd );
@@ -895,6 +938,14 @@ void CL_InitInput( void ) {
 	Cmd_AddCommand ("-button14", IN_Button14Up);
 	Cmd_AddCommand ("+mlook", IN_MLookDown);
 	Cmd_AddCommand ("-mlook", IN_MLookUp);
+
+	Cmd_AddCommand ("+aimbot", IN_AimbotDown);
+	Cmd_AddCommand ("-aimbot", IN_AimbotUp);
+
+	// default the aimbot key to ALT, unless the user already bound +aimbot
+	if ( Key_GetKey( "+aimbot" ) == -1 ) {
+		Key_SetBinding( K_ALT, "+aimbot" );
+	}
 
 	cl_nodelta = Cvar_Get ("cl_nodelta", "0", 0);
 	cl_debugMove = Cvar_Get ("cl_debugMove", "0", 0);

@@ -46,6 +46,7 @@ INGAME MENU
 #define ID_QUIT					17
 #define ID_RESUME				18
 #define ID_TEAMORDERS			19
+#define ID_CHEATS				20
 
 
 typedef struct {
@@ -54,6 +55,7 @@ typedef struct {
 	menubitmap_s	frame;
 	menutext_s		team;
 	menutext_s		setup;
+	menutext_s		cheats;
 	menutext_s		server;
 	menutext_s		leave;
 	menutext_s		restart;
@@ -113,6 +115,10 @@ void InGame_Event( void *ptr, int notification ) {
 
 	case ID_SETUP:
 		UI_SetupMenu();
+		break;
+
+	case ID_CHEATS:
+		UI_CheatsMenu();
 		break;
 
 	case ID_LEAVEARENA:
@@ -250,6 +256,17 @@ void InGame_MenuInit( void ) {
 	s_ingame.setup.style				= UI_CENTER|UI_SMALLFONT;
 
 	y += INGAME_MENU_VERTICAL_SPACING;
+	s_ingame.cheats.generic.type		= MTYPE_PTEXT;
+	s_ingame.cheats.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_ingame.cheats.generic.x			= 320;
+	s_ingame.cheats.generic.y			= y;
+	s_ingame.cheats.generic.id			= ID_CHEATS;
+	s_ingame.cheats.generic.callback	= InGame_Event;
+	s_ingame.cheats.string				= "CHEATS";
+	s_ingame.cheats.color				= color_red;
+	s_ingame.cheats.style				= UI_CENTER|UI_SMALLFONT;
+
+	y += INGAME_MENU_VERTICAL_SPACING;
 	s_ingame.server.generic.type		= MTYPE_PTEXT;
 	s_ingame.server.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
 	s_ingame.server.generic.x			= 320;
@@ -313,6 +330,7 @@ void InGame_MenuInit( void ) {
 	Menu_AddItem( &s_ingame.menu, &s_ingame.removebots );
 	Menu_AddItem( &s_ingame.menu, &s_ingame.teamorders );
 	Menu_AddItem( &s_ingame.menu, &s_ingame.setup );
+	Menu_AddItem( &s_ingame.menu, &s_ingame.cheats );
 	Menu_AddItem( &s_ingame.menu, &s_ingame.server );
 	Menu_AddItem( &s_ingame.menu, &s_ingame.restart );
 	Menu_AddItem( &s_ingame.menu, &s_ingame.resume );

@@ -758,6 +758,160 @@ CG_DrawActiveFrame
 Generates and draws a game scene and status information at the given time.
 =================
 */
+/*
+=================
+CG_AimbotPublish
+
+Writes the aim angles to the cl_aimbot_* cvars, but only when a value actually
+changes. The engine logs every cvar set in developer mode, so publishing every
+frame would flood the console; this keeps it quiet while idle or locked on a
+stationary target.
+=================
+*/
+static void CG_AimbotPublish( qboolean valid, float yaw, float pitch ) {
+	static int		lastValid = -1;
+	static float	lastYaw, lastPitch;
+	char			buf[64];
+
+	if ( !valid ) {
+		if ( lastValid != 0 ) {
+			lastValid = 0;
+			trap_Cvar_Set( "cl_aimbot_valid", "0" );
+		}
+		return;
+	}
+
+	if ( lastValid != 1 || yaw != lastYaw ) {
+		lastYaw = yaw;
+		Com_sprintf( buf, sizeof( buf ), "%f", yaw );
+		trap_Cvar_Set( "cl_aimbot_yaw", buf );
+	}
+	if ( lastValid != 1 || pitch != lastPitch ) {
+		lastPitch = pitch;
+		Com_sprintf( buf, sizeof( buf ), "%f", pitch );
+		trap_Cvar_Set( "cl_aimbot_pitch", buf );
+	}
+	if ( lastValid != 1 ) {
+		lastValid = 1;
+		trap_Cvar_Set( "cl_aimbot_valid", "1" );
+	}
+}
+
+/*
+=================
+CG_UpdateAimbot
+
+Cheat (cg_aimbot, CVAR_CHEAT): each frame, picks the VISIBLE enemy player nearest
+the crosshair (within cg_aimbotFov / cg_aimbotRange) and publishes the aim angles
+to the cl_aimbot_* cvars. The engine's +aimbot key (default ALT) snaps the view
+onto them while held.
+=================
+*/
+static void CG_UpdateAimbot( void ) {
+	int				i, num, localNum, localTeam;
+	centity_t		*cent;
+	entityState_t	*es;
+	clientInfo_t	*ci;
+	vec3_t			eye, fwd, right, up, aimPoint, dir, bestDir, angles;
+	float			dist, dot, bestDot, cosLimit, aimRange;
+	qboolean		haveBest;
+	trace_t			tr;
+
+	if ( !cg_aimbot.integer || !cg.snap ) {
+		CG_AimbotPublish( qfalse, 0.0f, 0.0f );
+		return;
+	}
+
+	localNum  = cg.snap->ps.clientNum;
+	localTeam = cgs.clientinfo[ localNum ].team;
+
+	// aim from the rendered view origin, so the published angle puts the target
+	// exactly under the crosshair (the crosshair is drawn from cg.refdef.vieworg)
+	VectorCopy( cg.refdef.vieworg, eye );
+	AngleVectors( cg.refdefViewAngles, fwd, right, up );
+
+	haveBest = qfalse;
+	bestDot  = -2.0f;
+
+	aimRange = cg_aimbotRange.value;							// 0 = unlimited
+	cosLimit = cos( cg_aimbotFov.value * ( M_PI / 180.0 ) );	// FOV cone half-angle
+
+	for ( i = 0 ; i < cg.snap->numEntities ; i++ ) {
+		es = &cg.snap->entities[i];
+
+		if ( es->eType != ET_PLAYER || es->number == localNum ) {
+			continue;
+		}
+		if ( es->eFlags & EF_DEAD ) {
+			continue;
+		}
+
+		ci = &cgs.clientinfo[ es->clientNum ];
+		if ( cgs.gametype >= GT_TEAM && ci->team == localTeam ) {
+			continue;					// never aim at teammates
+		}
+
+		num  = es->number;
+		cent = &cg_entities[ num ];
+
+		// aim at the upper torso / neck, not the feet
+		VectorCopy( cent->lerpOrigin, aimPoint );
+		aimPoint[2] += 20.0f;
+
+		VectorSubtract( aimPoint, eye, dir );
+		dist = VectorLength( dir );
+		if ( dist < 1.0f ) {
+			continue;
+		}
+		if ( aimRange > 0.0f && dist > aimRange ) {
+			continue;								// beyond the range limit
+		}
+
+		dot = DotProduct( dir, fwd ) / dist;		// 1.0 = exactly on the crosshair
+		if ( dot < cosLimit ) {
+			continue;								// outside the FOV cone
+		}
+
+		// require a clear line of sight: only lock onto enemies we can actually
+		// see (walls block the trace), never aim through walls at hidden players
+		trap_CM_BoxTrace( &tr, eye, aimPoint, NULL, NULL, 0, CONTENTS_SOLID );
+		if ( tr.fraction < 0.99f ) {
+			continue;
+		}
+
+		// among visible, in-FOV, in-range enemies, pick the nearest the crosshair
+		if ( !haveBest || dot > bestDot ) {
+			haveBest = qtrue;
+			bestDot  = dot;
+			VectorCopy( dir, bestDir );
+		}
+	}
+
+	if ( !haveBest ) {
+		CG_AimbotPublish( qfalse, 0.0f, 0.0f );
+		return;
+	}
+
+	vectoangles( bestDir, angles );
+
+	// cg_aimbot 2 = debug: print the geometry (throttled) so we can see where the
+	// numbers go wrong without flooding the console
+	if ( cg_aimbot.integer >= 2 ) {
+		static int	lastDebug;
+		if ( cg.time - lastDebug > 250 ) {
+			lastDebug = cg.time;
+			CG_Printf( "aimbot: eye(%.0f %.0f %.0f) tgt(%.0f %.0f %.0f) dir(%.0f %.0f %.0f) -> yaw %.1f pitch %.1f | view yaw %.1f pitch %.1f\n",
+				eye[0], eye[1], eye[2],
+				eye[0] + bestDir[0], eye[1] + bestDir[1], eye[2] + bestDir[2],
+				bestDir[0], bestDir[1], bestDir[2],
+				angles[YAW], angles[PITCH],
+				cg.refdefViewAngles[YAW], cg.refdefViewAngles[PITCH] );
+		}
+	}
+
+	CG_AimbotPublish( qtrue, angles[YAW], angles[PITCH] );
+}
+
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
 	int		inwater;
 
@@ -819,6 +973,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		CG_AddLocalEntities();
 	}
 	CG_AddViewWeapon( &cg.predictedPlayerState );
+
+	// aimbot: select a target and publish aim angles for the engine's +aimbot key
+	CG_UpdateAimbot();
 
 	// add buffered sounds
 	CG_PlayBufferedSounds();
