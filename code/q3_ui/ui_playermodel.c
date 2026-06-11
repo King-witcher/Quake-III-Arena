@@ -373,7 +373,7 @@ static void PlayerModel_DrawPlayer( void *self )
 	b = (menubitmap_s*) self;
 
 	if( trap_MemoryRemaining() <= LOW_MEMORY ) {
-		UI_DrawProportionalString( b->generic.x, b->generic.y + b->height / 2, "LOW MEMORY", UI_LEFT, color_red );
+		UI_DrawProportionalString( b->generic.x, b->generic.y + b->height / 2, "POUCA MEMORIA", UI_LEFT, color_red );
 		return;
 	}
 
@@ -535,7 +535,7 @@ static void PlayerModel_MenuInit( void )
 	s_playermodel.banner.generic.type  = MTYPE_BTEXT;
 	s_playermodel.banner.generic.x     = 320;
 	s_playermodel.banner.generic.y     = 16;
-	s_playermodel.banner.string        = "PLAYER MODEL";
+	s_playermodel.banner.string        = "MODELO DO JOGADOR";
 	s_playermodel.banner.color         = color_white;
 	s_playermodel.banner.style         = UI_CENTER;
 

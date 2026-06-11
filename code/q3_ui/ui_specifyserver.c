@@ -113,7 +113,7 @@ void SpecifyServer_MenuInit( void )
 	s_specifyserver.banner.generic.type	 = MTYPE_BTEXT;
 	s_specifyserver.banner.generic.x     = 320;
 	s_specifyserver.banner.generic.y     = 16;
-	s_specifyserver.banner.string		 = "SPECIFY SERVER";
+	s_specifyserver.banner.string		 = "ESPECIFICAR SERVIDOR";
 	s_specifyserver.banner.color  		 = color_white;
 	s_specifyserver.banner.style  		 = UI_CENTER;
 
@@ -134,7 +134,7 @@ void SpecifyServer_MenuInit( void )
 	s_specifyserver.framer.height  	     = 334;
 
 	s_specifyserver.domain.generic.type       = MTYPE_FIELD;
-	s_specifyserver.domain.generic.name       = "Address:";
+	s_specifyserver.domain.generic.name       = "Endereco:";
 	s_specifyserver.domain.generic.flags      = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_specifyserver.domain.generic.x	      = 206;
 	s_specifyserver.domain.generic.y	      = 220;
@@ -142,7 +142,7 @@ void SpecifyServer_MenuInit( void )
 	s_specifyserver.domain.field.maxchars     = 80;
 
 	s_specifyserver.port.generic.type       = MTYPE_FIELD;
-	s_specifyserver.port.generic.name	    = "Port:";
+	s_specifyserver.port.generic.name	    = "Porta:";
 	s_specifyserver.port.generic.flags	    = QMF_PULSEIFFOCUS|QMF_SMALLFONT|QMF_NUMBERSONLY;
 	s_specifyserver.port.generic.x	        = 206;
 	s_specifyserver.port.generic.y	        = 250;

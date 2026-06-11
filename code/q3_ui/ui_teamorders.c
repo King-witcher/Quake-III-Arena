@@ -62,13 +62,13 @@ static teamOrdersMenuInfo_t	teamOrdersMenuInfo;
 
 #define NUM_CTF_ORDERS		7
 static const char *ctfOrders[] = {
-	"I Am the Leader",
-	"Defend the Base",
-	"Follow Me",
-	"Get Enemy Flag",
-	"Camp Here",
-	"Report",
-	"I Relinquish Command",
+	"Eu Sou o Lider",
+	"Defenda a Base",
+	"Siga-me",
+	"Pegue a Bandeira Inimiga",
+	"Acampe Aqui",
+	"Reporte",
+	"Abdico do Comando",
 	NULL
 };
 static const char *ctfMessages[] = {
@@ -84,12 +84,12 @@ static const char *ctfMessages[] = {
 
 #define NUM_TEAM_ORDERS		6
 static const char *teamOrders[] = {
-	"I Am the Leader",
-	"Follow Me",
-	"Roam",
-	"Camp Here",
-	"Report",
-	"I Relinquish Command",
+	"Eu Sou o Lider",
+	"Siga-me",
+	"Vagar",
+	"Acampe Aqui",
+	"Reporte",
+	"Abdico do Comando",
 	NULL
 };
 static const char *teamMessages[] = {
@@ -305,7 +305,7 @@ static void UI_TeamOrdersMenu_BuildBotList( void ) {
 
 	trap_GetClientState( &cs );
 
-	Q_strncpyz( teamOrdersMenuInfo.botNames[0], "Everyone", 16 );
+	Q_strncpyz( teamOrdersMenuInfo.botNames[0], "Todos", 16 );
 	teamOrdersMenuInfo.numBots = 1;
 
 	trap_GetConfigString( CS_SERVERINFO, info, sizeof(info) );
@@ -356,7 +356,7 @@ static void UI_TeamOrdersMenu_Init( void ) {
 	teamOrdersMenuInfo.banner.generic.type		= MTYPE_BTEXT;
 	teamOrdersMenuInfo.banner.generic.x			= 320;
 	teamOrdersMenuInfo.banner.generic.y			= 16;
-	teamOrdersMenuInfo.banner.string			= "TEAM ORDERS";
+	teamOrdersMenuInfo.banner.string			= "ORDENS DE EQUIPE";
 	teamOrdersMenuInfo.banner.color				= color_white;
 	teamOrdersMenuInfo.banner.style				= UI_CENTER;
 

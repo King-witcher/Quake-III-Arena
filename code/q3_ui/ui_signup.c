@@ -145,7 +145,7 @@ void Signup_MenuInit( void ) {
 	s_signup.name.generic.id				= ID_NAME;
 	s_signup.name.generic.x					= 310;
 	s_signup.name.generic.y					= y;
-	s_signup.name.string					= "NAME";
+	s_signup.name.string					= "NOME";
 	s_signup.name.style						= UI_RIGHT|UI_SMALLFONT;
 	s_signup.name.color						= s_signup_color_prompt;
 
@@ -164,7 +164,7 @@ void Signup_MenuInit( void ) {
 	s_signup.password.generic.id			= ID_PASSWORD;
 	s_signup.password.generic.x				= 310;
 	s_signup.password.generic.y				= y;
-	s_signup.password.string				= "PASSWORD";
+	s_signup.password.string				= "SENHA";
 	s_signup.password.style					= UI_RIGHT|UI_SMALLFONT;
 	s_signup.password.color					= s_signup_color_prompt;
 
@@ -183,7 +183,7 @@ void Signup_MenuInit( void ) {
 	s_signup.again.generic.id				= ID_AGAIN;
 	s_signup.again.generic.x				= 310;
 	s_signup.again.generic.y				= y;
-	s_signup.again.string					= "(AGAIN)";
+	s_signup.again.string					= "(DE NOVO)";
 	s_signup.again.style					= UI_RIGHT|UI_SMALLFONT;
 	s_signup.again.color					= s_signup_color_prompt;
 
@@ -222,7 +222,7 @@ void Signup_MenuInit( void ) {
 	s_signup.signup.generic.callback		= Signup_MenuEvent;
 	s_signup.signup.generic.x				= 310;
 	s_signup.signup.generic.y				= y;
-	s_signup.signup.string					= "SIGN UP";
+	s_signup.signup.string					= "CADASTRAR";
 	s_signup.signup.style					= UI_RIGHT|UI_SMALLFONT;
 	s_signup.signup.color					= colorRed;
 
@@ -232,7 +232,7 @@ void Signup_MenuInit( void ) {
 	s_signup.cancel.generic.callback		= Signup_MenuEvent;
 	s_signup.cancel.generic.x				= 330;
 	s_signup.cancel.generic.y				= y;
-	s_signup.cancel.string					= "CANCEL";
+	s_signup.cancel.string					= "CANCELAR";
 	s_signup.cancel.style					= UI_LEFT|UI_SMALLFONT;
 	s_signup.cancel.color					= colorRed;
 	y += 20;

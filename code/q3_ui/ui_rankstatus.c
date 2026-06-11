@@ -178,22 +178,22 @@ void UI_RankStatusMenu( void ) {
 		return;
 	case QGR_STATUS_NO_USER:
 		// GRANK_FIXME - get this when user exists
-		s_rankstatus_message = "Username unavailable";
+		s_rankstatus_message = "Nome de usuario indisponivel";
 		break;
 	case QGR_STATUS_BAD_PASSWORD:
-		s_rankstatus_message = "Invalid password";
+		s_rankstatus_message = "Senha invalida";
 		break;
 	case QGR_STATUS_TIMEOUT:
-		s_rankstatus_message = "Timed out";
+		s_rankstatus_message = "Tempo esgotado";
 		break;
 	case QGR_STATUS_NO_MEMBERSHIP:
-		s_rankstatus_message = "No membership";
+		s_rankstatus_message = "Sem associacao";
 		break;
 	case QGR_STATUS_INVALIDUSER:
-		s_rankstatus_message = "Validation failed";
+		s_rankstatus_message = "Falha na validacao";
 		break;
 	case QGR_STATUS_ERROR:
-		s_rankstatus_message = "Error";
+		s_rankstatus_message = "Erro";
 		break;
 	case QGR_STATUS_SPECTATOR:
 	case QGR_STATUS_ACTIVE:

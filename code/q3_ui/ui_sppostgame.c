@@ -77,7 +77,7 @@ typedef struct {
 static postgameMenuInfo_t	postgameMenuInfo;
 static char					arenainfo[MAX_INFO_VALUE];
 
-char	*ui_medalNames[] = {"Accuracy", "Impressive", "Excellent", "Gauntlet", "Frags", "Perfect"};
+char	*ui_medalNames[] = {"Precisao", "Impressionante", "Excelente", "Manopla", "Frags", "Perfeito"};
 char	*ui_medalPicNames[] = {
 	"menu/medals/medal_accuracy",
 	"menu/medals/medal_impressive",
@@ -277,7 +277,7 @@ static void UI_SPPostgameMenu_MenuDrawScoreLine( int n, int y ) {
 
 	rank = postgameMenuInfo.ranks[n];
 	if( rank & RANK_TIED_FLAG ) {
-		UI_DrawString( 640 - 31 * SMALLCHAR_WIDTH, y, "(tie)", UI_LEFT|UI_SMALLFONT, color_white );
+		UI_DrawString( 640 - 31 * SMALLCHAR_WIDTH, y, "(empate)", UI_LEFT|UI_SMALLFONT, color_white );
 		rank &= ~RANK_TIED_FLAG;
 	}
 	trap_GetConfigString( CS_PLAYERS + postgameMenuInfo.clientNums[n], info, MAX_INFO_STRING );

@@ -171,10 +171,10 @@ static void CG_DrawClientScore( int y, score_t *score, float *color, float fade,
 	// draw the score line
 	if ( score->ping == -1 ) {
 		Com_sprintf(string, sizeof(string),
-			" connecting    %s", ci->name);
+			" conectando    %s", ci->name);
 	} else if ( ci->team == TEAM_SPECTATOR ) {
 		Com_sprintf(string, sizeof(string),
-			" SPECT %3i %4i %s", score->ping, score->time, ci->name);
+			" ESPEC %3i %4i %s", score->ping, score->time, ci->name);
 	} else {
 		Com_sprintf(string, sizeof(string),
 			"%5i %4i %4i %s", score->score, score->ping, score->time, ci->name);
@@ -220,7 +220,7 @@ static void CG_DrawClientScore( int y, score_t *score, float *color, float fade,
 
 	// add the "ready" marker for intermission exiting
 	if ( cg.snap->ps.stats[ STAT_CLIENTS_READY ] & ( 1 << score->client ) ) {
-		CG_DrawBigStringColor( iconx, y, "READY", color );
+		CG_DrawBigStringColor( iconx, y, "PRONTO", color );
 	}
 }
 
@@ -307,7 +307,7 @@ qboolean CG_DrawOldScoreboard( void ) {
 
 	// fragged by ... line
 	if ( cg.killerName[0] ) {
-		s = va("Fragged by %s", cg.killerName );
+		s = va("Fragado por %s", cg.killerName );
 		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 		x = ( SCREEN_WIDTH - w ) / 2;
 		y = 40;
@@ -317,7 +317,7 @@ qboolean CG_DrawOldScoreboard( void ) {
 	// current rank
 	if ( cgs.gametype < GT_TEAM) {
 		if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR ) {
-			s = va("%s place with %i",
+			s = va("%s lugar com %i",
 				CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),
 				cg.snap->ps.persistant[PERS_SCORE] );
 			w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
@@ -327,11 +327,11 @@ qboolean CG_DrawOldScoreboard( void ) {
 		}
 	} else {
 		if ( cg.teamScores[0] == cg.teamScores[1] ) {
-			s = va("Teams are tied at %i", cg.teamScores[0] );
+			s = va("Times empatados em %i", cg.teamScores[0] );
 		} else if ( cg.teamScores[0] >= cg.teamScores[1] ) {
-			s = va("Red leads %i to %i",cg.teamScores[0], cg.teamScores[1] );
+			s = va("Vermelho lidera %i a %i",cg.teamScores[0], cg.teamScores[1] );
 		} else {
-			s = va("Blue leads %i to %i",cg.teamScores[1], cg.teamScores[0] );
+			s = va("Azul lidera %i a %i",cg.teamScores[1], cg.teamScores[0] );
 		}
 
 		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
@@ -476,7 +476,7 @@ void CG_DrawOldTourneyScoreboard( void ) {
 	// print the mesage of the day
 	s = CG_ConfigString( CS_MOTD );
 	if ( !s[0] ) {
-		s = "Scoreboard";
+		s = "Placar";
 	}
 
 	// print optional title
@@ -500,13 +500,13 @@ void CG_DrawOldTourneyScoreboard( void ) {
 		//
 		// teamplay scoreboard
 		//
-		CG_DrawStringExt( 8, y, "Red Team", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
+		CG_DrawStringExt( 8, y, "Time Vermelho", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
 		s = va("%i", cg.teamScores[0] );
 		CG_DrawStringExt( 632 - GIANT_WIDTH * strlen(s), y, s, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
 		
 		y += 64;
 
-		CG_DrawStringExt( 8, y, "Blue Team", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
+		CG_DrawStringExt( 8, y, "Time Azul", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
 		s = va("%i", cg.teamScores[1] );
 		CG_DrawStringExt( 632 - GIANT_WIDTH * strlen(s), y, s, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
 	} else {

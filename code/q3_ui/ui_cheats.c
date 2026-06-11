@@ -135,7 +135,7 @@ static void Cheats_MenuInit( void ) {
 	s_cheats.banner.generic.type	= MTYPE_BTEXT;
 	s_cheats.banner.generic.x		= 320;
 	s_cheats.banner.generic.y		= 16;
-	s_cheats.banner.string			= "CHEATS";
+	s_cheats.banner.string			= "TRAPACAS";
 	s_cheats.banner.color			= color_white;
 	s_cheats.banner.style			= UI_CENTER;
 
@@ -157,7 +157,7 @@ static void Cheats_MenuInit( void ) {
 
 	y = 168;
 	s_cheats.aimbot.generic.type		= MTYPE_RADIOBUTTON;
-	s_cheats.aimbot.generic.name		= "Aimbot (hold ALT):";
+	s_cheats.aimbot.generic.name		= "Aimbot (segure ALT):";
 	s_cheats.aimbot.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_cheats.aimbot.generic.callback	= Cheats_Event;
 	s_cheats.aimbot.generic.id			= ID_AIMBOT;
@@ -177,7 +177,7 @@ static void Cheats_MenuInit( void ) {
 
 	y += BIGCHAR_HEIGHT+2;
 	s_cheats.aimbotrange.generic.type		= MTYPE_SLIDER;
-	s_cheats.aimbotrange.generic.name		= "Aimbot Range:";
+	s_cheats.aimbotrange.generic.name		= "Alcance do Aimbot:";
 	s_cheats.aimbotrange.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_cheats.aimbotrange.generic.callback	= Cheats_Event;
 	s_cheats.aimbotrange.generic.id			= ID_AIMBOTRANGE;
@@ -188,7 +188,7 @@ static void Cheats_MenuInit( void ) {
 
 	y += BIGCHAR_HEIGHT+2;
 	s_cheats.aimbotsmooth.generic.type		= MTYPE_SLIDER;
-	s_cheats.aimbotsmooth.generic.name		= "Aimbot Smooth:";
+	s_cheats.aimbotsmooth.generic.name		= "Suavizacao do Aimbot:";
 	s_cheats.aimbotsmooth.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_cheats.aimbotsmooth.generic.callback	= Cheats_Event;
 	s_cheats.aimbotsmooth.generic.id		= ID_AIMBOTSMOOTH;
@@ -211,7 +211,7 @@ static void Cheats_MenuInit( void ) {
 	s_cheats.hint.generic.flags	= QMF_INACTIVE;
 	s_cheats.hint.generic.x		= 320;
 	s_cheats.hint.generic.y		= y;
-	s_cheats.hint.string		= "toggles require sv_cheats 1 (use devmap)";
+	s_cheats.hint.string		= "as opcoes requerem sv_cheats 1 (use devmap)";
 	s_cheats.hint.color			= color_red;
 	s_cheats.hint.style			= UI_CENTER|UI_SMALLFONT;
 

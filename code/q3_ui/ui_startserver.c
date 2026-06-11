@@ -94,10 +94,10 @@ typedef struct {
 static startserver_t s_startserver;
 
 static const char *gametype_items[] = {
-	"Free For All",
-	"Team Deathmatch",
-	"Tournament",
-	"Capture the Flag",
+	"Todos Contra Todos",
+	"Mata-Mata em Equipe",
+	"Torneio",
+	"Capture a Bandeira",
 	0
 };
 
@@ -203,7 +203,7 @@ static void StartServer_Update( void ) {
 		s_startserver.next.generic.flags |= QMF_INACTIVE;
 
 		// set the map name
-		strcpy( s_startserver.mapname.string, "NO MAPS FOUND" );
+		strcpy( s_startserver.mapname.string, "NENHUM MAPA ENCONTRADO" );
 	}
 	else {
 		// set the highlight
@@ -397,7 +397,7 @@ static void StartServer_MenuInit( void ) {
 	s_startserver.banner.generic.type  = MTYPE_BTEXT;
 	s_startserver.banner.generic.x	   = 320;
 	s_startserver.banner.generic.y	   = 16;
-	s_startserver.banner.string        = "GAME SERVER";
+	s_startserver.banner.string        = "SERVIDOR DE JOGO";
 	s_startserver.banner.color         = color_white;
 	s_startserver.banner.style         = UI_CENTER;
 
@@ -418,7 +418,7 @@ static void StartServer_MenuInit( void ) {
 	s_startserver.framer.height  	   = 334;
 
 	s_startserver.gametype.generic.type		= MTYPE_SPINCONTROL;
-	s_startserver.gametype.generic.name		= "Game Type:";
+	s_startserver.gametype.generic.name		= "Tipo de Jogo:";
 	s_startserver.gametype.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_startserver.gametype.generic.callback	= StartServer_GametypeEvent;
 	s_startserver.gametype.generic.id		= ID_GAMETYPE;
@@ -662,14 +662,14 @@ typedef struct {
 static serveroptions_t s_serveroptions;
 
 static const char *dedicated_list[] = {
-	"No",
+	"Nao",
 	"LAN",
 	"Internet",
 	0
 };
 
 static const char *playerType_list[] = {
-	"Open",
+	"Aberto",
 	"Bot",
 	"----",
 	0
@@ -682,11 +682,11 @@ static const char *playerTeam_list[] = {
 };
 
 static const char *botSkill_list[] = {
-	"I Can Win",
-	"Bring It On",
-	"Hurt Me Plenty",
+	"Posso Vencer",
+	"Manda Ver",
+	"Me Castigue",
 	"Hardcore",
-	"Nightmare!",
+	"Pesadelo!",
 	0
 };
 
@@ -892,13 +892,13 @@ static void ServerOptions_SetPlayerItems( void ) {
 
 	// names
 	if( s_serveroptions.dedicated.curvalue == 0 ) {
-		s_serveroptions.player0.string = "Human";
+		s_serveroptions.player0.string = "Humano";
 		s_serveroptions.playerName[0].generic.flags &= ~QMF_HIDDEN;
 
 		start = 1;
 	}
 	else {
-		s_serveroptions.player0.string = "Open";
+		s_serveroptions.player0.string = "Aberto";
 		start = 0;
 	}
 	for( n = start; n < PLAYER_SLOTS; n++ ) {
@@ -989,7 +989,7 @@ ServerOptions_StatusBar
 static void ServerOptions_StatusBar( void* ptr ) {
 	switch( ((menucommon_s*)ptr)->id ) {
 	default:
-		UI_DrawString( 320, 440, "0 = NO LIMIT", UI_CENTER|UI_SMALLFONT, colorWhite );
+		UI_DrawString( 320, 440, "0 = SEM LIMITE", UI_CENTER|UI_SMALLFONT, colorWhite );
 		break;
 	}
 }
@@ -1242,7 +1242,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 	s_serveroptions.banner.generic.type			= MTYPE_BTEXT;
 	s_serveroptions.banner.generic.x			= 320;
 	s_serveroptions.banner.generic.y			= 16;
-	s_serveroptions.banner.string  				= "GAME SERVER";
+	s_serveroptions.banner.string  				= "SERVIDOR DE JOGO";
 	s_serveroptions.banner.color  				= color_white;
 	s_serveroptions.banner.style  				= UI_CENTER;
 
@@ -1266,7 +1266,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 	y = 272;
 	if( s_serveroptions.gametype != GT_CTF ) {
 		s_serveroptions.fraglimit.generic.type       = MTYPE_FIELD;
-		s_serveroptions.fraglimit.generic.name       = "Frag Limit:";
+		s_serveroptions.fraglimit.generic.name       = "Limite de Frags:";
 		s_serveroptions.fraglimit.generic.flags      = QMF_NUMBERSONLY|QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 		s_serveroptions.fraglimit.generic.x	         = OPTIONS_X;
 		s_serveroptions.fraglimit.generic.y	         = y;
@@ -1276,7 +1276,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 	}
 	else {
 		s_serveroptions.flaglimit.generic.type       = MTYPE_FIELD;
-		s_serveroptions.flaglimit.generic.name       = "Capture Limit:";
+		s_serveroptions.flaglimit.generic.name       = "Limite de Capturas:";
 		s_serveroptions.flaglimit.generic.flags      = QMF_NUMBERSONLY|QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 		s_serveroptions.flaglimit.generic.x	         = OPTIONS_X;
 		s_serveroptions.flaglimit.generic.y	         = y;
@@ -1287,7 +1287,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 
 	y += BIGCHAR_HEIGHT+2;
 	s_serveroptions.timelimit.generic.type       = MTYPE_FIELD;
-	s_serveroptions.timelimit.generic.name       = "Time Limit:";
+	s_serveroptions.timelimit.generic.name       = "Limite de Tempo:";
 	s_serveroptions.timelimit.generic.flags      = QMF_NUMBERSONLY|QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_serveroptions.timelimit.generic.x	         = OPTIONS_X;
 	s_serveroptions.timelimit.generic.y	         = y;
@@ -1301,7 +1301,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 		s_serveroptions.friendlyfire.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 		s_serveroptions.friendlyfire.generic.x	      = OPTIONS_X;
 		s_serveroptions.friendlyfire.generic.y	      = y;
-		s_serveroptions.friendlyfire.generic.name	  = "Friendly Fire:";
+		s_serveroptions.friendlyfire.generic.name	  = "Fogo Amigo:";
 	}
 
 	y += BIGCHAR_HEIGHT+2;
@@ -1309,7 +1309,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 	s_serveroptions.pure.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_serveroptions.pure.generic.x				= OPTIONS_X;
 	s_serveroptions.pure.generic.y				= y;
-	s_serveroptions.pure.generic.name			= "Pure Server:";
+	s_serveroptions.pure.generic.name			= "Servidor Puro:";
 
 	if( s_serveroptions.multiplayer ) {
 		y += BIGCHAR_HEIGHT+2;
@@ -1319,14 +1319,14 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 		s_serveroptions.dedicated.generic.callback	= ServerOptions_Event;
 		s_serveroptions.dedicated.generic.x			= OPTIONS_X;
 		s_serveroptions.dedicated.generic.y			= y;
-		s_serveroptions.dedicated.generic.name		= "Dedicated:";
+		s_serveroptions.dedicated.generic.name		= "Dedicado:";
 		s_serveroptions.dedicated.itemnames			= dedicated_list;
 	}
 
 	if( s_serveroptions.multiplayer ) {
 		y += BIGCHAR_HEIGHT+2;
 		s_serveroptions.hostname.generic.type       = MTYPE_FIELD;
-		s_serveroptions.hostname.generic.name       = "Hostname:";
+		s_serveroptions.hostname.generic.name       = "Nome do Host:";
 		s_serveroptions.hostname.generic.flags      = QMF_SMALLFONT;
 		s_serveroptions.hostname.generic.x          = OPTIONS_X;
 		s_serveroptions.hostname.generic.y	        = y;
@@ -1346,7 +1346,7 @@ static void ServerOptions_MenuInit( qboolean multiplayer ) {
 	y = 80;
 	s_serveroptions.botSkill.generic.type			= MTYPE_SPINCONTROL;
 	s_serveroptions.botSkill.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_serveroptions.botSkill.generic.name			= "Bot Skill:  ";
+	s_serveroptions.botSkill.generic.name			= "Nivel do Bot:  ";
 	s_serveroptions.botSkill.generic.x				= 32 + (strlen(s_serveroptions.botSkill.generic.name) + 2 ) * SMALLCHAR_WIDTH;
 	s_serveroptions.botSkill.generic.y				= y;
 	s_serveroptions.botSkill.itemnames				= botSkill_list;
@@ -1846,7 +1846,7 @@ static void UI_BotSelectMenu_Init( char *bot ) {
 	botSelectInfo.banner.generic.type	= MTYPE_BTEXT;
 	botSelectInfo.banner.generic.x		= 320;
 	botSelectInfo.banner.generic.y		= 16;
-	botSelectInfo.banner.string			= "SELECT BOT";
+	botSelectInfo.banner.string			= "SELECIONAR BOT";
 	botSelectInfo.banner.color			= color_white;
 	botSelectInfo.banner.style			= UI_CENTER;
 

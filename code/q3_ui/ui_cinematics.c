@@ -127,7 +127,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.banner.generic.type		= MTYPE_BTEXT;
 	cinematicsMenuInfo.banner.generic.x			= 320;
 	cinematicsMenuInfo.banner.generic.y			= 16;
-	cinematicsMenuInfo.banner.string			= "CINEMATICS";
+	cinematicsMenuInfo.banner.string			= "CINEMATICAS";
 	cinematicsMenuInfo.banner.color				= color_white;
 	cinematicsMenuInfo.banner.style				= UI_CENTER;
 
@@ -179,7 +179,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier1.generic.y			= y;
 	cinematicsMenuInfo.cin_tier1.generic.id			= ID_CIN_TIER1;
 	cinematicsMenuInfo.cin_tier1.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier1.string				= "Tier 1";
+	cinematicsMenuInfo.cin_tier1.string				= "Nivel 1";
 	cinematicsMenuInfo.cin_tier1.color				= color_red;
 	cinematicsMenuInfo.cin_tier1.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 1 ) ) {
@@ -193,7 +193,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier2.generic.y			= y;
 	cinematicsMenuInfo.cin_tier2.generic.id			= ID_CIN_TIER2;
 	cinematicsMenuInfo.cin_tier2.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier2.string				= "Tier 2";
+	cinematicsMenuInfo.cin_tier2.string				= "Nivel 2";
 	cinematicsMenuInfo.cin_tier2.color				= color_red;
 	cinematicsMenuInfo.cin_tier2.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 2 ) ) {
@@ -207,7 +207,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier3.generic.y			= y;
 	cinematicsMenuInfo.cin_tier3.generic.id			= ID_CIN_TIER3;
 	cinematicsMenuInfo.cin_tier3.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier3.string				= "Tier 3";
+	cinematicsMenuInfo.cin_tier3.string				= "Nivel 3";
 	cinematicsMenuInfo.cin_tier3.color				= color_red;
 	cinematicsMenuInfo.cin_tier3.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 3 ) ) {
@@ -221,7 +221,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier4.generic.y			= y;
 	cinematicsMenuInfo.cin_tier4.generic.id			= ID_CIN_TIER4;
 	cinematicsMenuInfo.cin_tier4.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier4.string				= "Tier 4";
+	cinematicsMenuInfo.cin_tier4.string				= "Nivel 4";
 	cinematicsMenuInfo.cin_tier4.color				= color_red;
 	cinematicsMenuInfo.cin_tier4.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 4 ) ) {
@@ -235,7 +235,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier5.generic.y			= y;
 	cinematicsMenuInfo.cin_tier5.generic.id			= ID_CIN_TIER5;
 	cinematicsMenuInfo.cin_tier5.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier5.string				= "Tier 5";
+	cinematicsMenuInfo.cin_tier5.string				= "Nivel 5";
 	cinematicsMenuInfo.cin_tier5.color				= color_red;
 	cinematicsMenuInfo.cin_tier5.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 5 ) ) {
@@ -249,7 +249,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier6.generic.y			= y;
 	cinematicsMenuInfo.cin_tier6.generic.id			= ID_CIN_TIER6;
 	cinematicsMenuInfo.cin_tier6.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier6.string				= "Tier 6";
+	cinematicsMenuInfo.cin_tier6.string				= "Nivel 6";
 	cinematicsMenuInfo.cin_tier6.color				= color_red;
 	cinematicsMenuInfo.cin_tier6.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 6 ) ) {
@@ -263,7 +263,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_tier7.generic.y			= y;
 	cinematicsMenuInfo.cin_tier7.generic.id			= ID_CIN_TIER7;
 	cinematicsMenuInfo.cin_tier7.generic.callback	= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_tier7.string				= "Tier 7";
+	cinematicsMenuInfo.cin_tier7.string				= "Nivel 7";
 	cinematicsMenuInfo.cin_tier7.color				= color_red;
 	cinematicsMenuInfo.cin_tier7.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 7 ) ) {
@@ -277,7 +277,7 @@ static void UI_CinematicsMenu_Init( void ) {
 	cinematicsMenuInfo.cin_end.generic.y			= y;
 	cinematicsMenuInfo.cin_end.generic.id			= ID_CIN_END;
 	cinematicsMenuInfo.cin_end.generic.callback		= UI_CinematicsMenu_Event; 
-	cinematicsMenuInfo.cin_end.string				= "END";
+	cinematicsMenuInfo.cin_end.string				= "FIM";
 	cinematicsMenuInfo.cin_end.color				= color_red;
 	cinematicsMenuInfo.cin_end.style				= UI_CENTER;
 	if( !UI_CanShowTierVideo( 8 ) ) {

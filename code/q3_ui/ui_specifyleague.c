@@ -184,7 +184,7 @@ void SpecifyLeague_MenuInit( void )
 	s_specifyleague.banner.generic.type	 = MTYPE_BTEXT;
 	s_specifyleague.banner.generic.x     = 320;
 	s_specifyleague.banner.generic.y     = 16;
-	s_specifyleague.banner.string		 = "CHOOSE LEAGUE";
+	s_specifyleague.banner.string		 = "ESCOLHER LIGA";
 	s_specifyleague.banner.color  		 = color_white;
 	s_specifyleague.banner.style  		 = UI_CENTER;
 
@@ -213,7 +213,7 @@ void SpecifyLeague_MenuInit( void )
 	s_specifyleague.grlogo.height		 = 128;
 
 	s_specifyleague.rankname.generic.type       = MTYPE_FIELD;
-	s_specifyleague.rankname.generic.name       = "Player Name:";
+	s_specifyleague.rankname.generic.name       = "Nome do Jogador:";
 	s_specifyleague.rankname.generic.flags      = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_specifyleague.rankname.generic.callback   = SpecifyLeague_Event;
 	s_specifyleague.rankname.generic.id	        = ID_SPECIFYLEAGUENAME;

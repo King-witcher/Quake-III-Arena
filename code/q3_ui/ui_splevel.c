@@ -350,10 +350,10 @@ UI_SPLevelMenu_ResetEvent
 =================
 */
 static void UI_SPLevelMenu_ResetDraw( void ) {
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 0, "WARNING: This resets all of the", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 1, "single player game variables.", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 2, "Do this only if you want to", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 3, "start over from the beginning.", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 0, "AVISO: Isto reinicia todas as", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 1, "variaveis do jogo de um jogador.", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 2, "Faca isto apenas se quiser", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 3, "comecar de novo do inicio.", UI_CENTER|UI_SMALLFONT, color_yellow );
 }
 
 static void UI_SPLevelMenu_ResetAction( qboolean result ) {
@@ -376,7 +376,7 @@ static void UI_SPLevelMenu_ResetEvent( void* ptr, int event )
 		return;
 	}
 
-	UI_ConfirmMenu( "RESET GAME?", UI_SPLevelMenu_ResetDraw, UI_SPLevelMenu_ResetAction );
+	UI_ConfirmMenu( "REINICIAR JOGO?", UI_SPLevelMenu_ResetDraw, UI_SPLevelMenu_ResetAction );
 }
 
 
@@ -596,7 +596,7 @@ static void UI_SPLevelMenu_MenuDraw( void ) {
 		}
 	}
 
-	UI_DrawProportionalString( 18, 38, va( "Tier %i", selectedArenaSet + 1 ), UI_LEFT|UI_SMALLFONT, color_orange );
+	UI_DrawProportionalString( 18, 38, va( "Nivel %i", selectedArenaSet + 1 ), UI_LEFT|UI_SMALLFONT, color_orange );
 
 	for ( n = 0; n < levelMenuInfo.numMaps; n++ ) {
 		x = levelMenuInfo.item_maps[n].generic.x;
@@ -605,7 +605,7 @@ static void UI_SPLevelMenu_MenuDraw( void ) {
 	}
 
 	if ( selectedArenaSet > currentSet ) {
-		UI_DrawProportionalString( 320, 216, "ACCESS DENIED", UI_CENTER|UI_BIGFONT, color_red );
+		UI_DrawProportionalString( 320, 216, "ACESSO NEGADO", UI_CENTER|UI_BIGFONT, color_red );
 		return;
 	}
 
@@ -733,7 +733,7 @@ static void UI_SPLevelMenu_Init( void ) {
 	levelMenuInfo.item_banner.generic.type			= MTYPE_BTEXT;
 	levelMenuInfo.item_banner.generic.x				= 320;
 	levelMenuInfo.item_banner.generic.y				= 16;
-	levelMenuInfo.item_banner.string				= "CHOOSE LEVEL";
+	levelMenuInfo.item_banner.string				= "ESCOLHER NIVEL";
 	levelMenuInfo.item_banner.color					= color_red;
 	levelMenuInfo.item_banner.style					= UI_CENTER;
 

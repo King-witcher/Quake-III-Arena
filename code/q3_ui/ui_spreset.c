@@ -106,14 +106,14 @@ Reset_MenuDraw
 */
 static void Reset_MenuDraw( void ) {
 	UI_DrawNamedPic( 142, 118, 359, 256, ART_FRAME );
-	UI_DrawProportionalString( 320, 194 + 10, "RESET GAME?", UI_CENTER|UI_INVERSE, color_red );
+	UI_DrawProportionalString( 320, 194 + 10, "REINICIAR JOGO?", UI_CENTER|UI_INVERSE, color_red );
 	UI_DrawProportionalString( s_reset.slashX, 265, "/", UI_LEFT|UI_INVERSE, color_red );
 	Menu_Draw( &s_reset.menu );
 
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 0, "WARNING: This resets all of the", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 1, "single player game variables.", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 2, "Do this only if you want to", UI_CENTER|UI_SMALLFONT, color_yellow );
-	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 3, "start over from the beginning.", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 0, "AVISO: Isto reinicia todas as", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 1, "variaveis do jogo de um jogador.", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 2, "Faca isto apenas se quiser", UI_CENTER|UI_SMALLFONT, color_yellow );
+	UI_DrawProportionalString( SCREEN_WIDTH/2, 356 + PROP_HEIGHT * 3, "comecar de novo do inicio.", UI_CENTER|UI_SMALLFONT, color_yellow );
 }
 
 
@@ -142,8 +142,8 @@ void UI_ResetMenu(void) {
 
 	Reset_Cache();
 
-	n1 = UI_ProportionalStringWidth( "YES/NO" );
-	n2 = UI_ProportionalStringWidth( "YES" ) + PROP_GAP_WIDTH;
+	n1 = UI_ProportionalStringWidth( "SIM/NAO" );
+	n2 = UI_ProportionalStringWidth( "SIM" ) + PROP_GAP_WIDTH;
 	n3 = UI_ProportionalStringWidth( "/" )  + PROP_GAP_WIDTH;
 	l1 = 320 - ( n1 / 2 );
 	l2 = l1 + n2;
@@ -171,7 +171,7 @@ void UI_ResetMenu(void) {
 	s_reset.yes.generic.id			= ID_YES;
 	s_reset.yes.generic.x			= l1;
 	s_reset.yes.generic.y			= 264;
-	s_reset.yes.string				= "YES";
+	s_reset.yes.string				= "SIM";
 	s_reset.yes.color				= color_red;
 	s_reset.yes.style				= UI_LEFT;
 
@@ -181,7 +181,7 @@ void UI_ResetMenu(void) {
 	s_reset.no.generic.id			= ID_NO;
 	s_reset.no.generic.x		    = l3;
 	s_reset.no.generic.y		    = 264;
-	s_reset.no.string				= "NO";
+	s_reset.no.string				= "NAO";
 	s_reset.no.color			    = color_red;
 	s_reset.no.style			    = UI_LEFT;
 

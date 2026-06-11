@@ -128,7 +128,7 @@ static void CG_SetSelectedPlayerName() {
 			cgs.currentOrder = ci->teamTask;
 	  }
 	} else {
-		trap_Cvar_Set("cg_selectedPlayerName", "Everyone");
+		trap_Cvar_Set("cg_selectedPlayerName", "Todos");
 	}
 }
 int CG_GetSelectedPlayer() {
@@ -436,7 +436,7 @@ static void CG_DrawSelectedPlayerLocation( rectDef_t *rect, float scale, vec4_t 
   if (ci) {
 		const char *p = CG_ConfigString(CS_LOCATIONS + ci->location);
 		if (!p || !*p) {
-			p = "unknown";
+			p = "desconhecido";
 		}
     CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, p, 0, 0, textStyle);
   }
@@ -447,7 +447,7 @@ static void CG_DrawPlayerLocation( rectDef_t *rect, float scale, vec4_t color, i
   if (ci) {
 		const char *p = CG_ConfigString(CS_LOCATIONS + ci->location);
 		if (!p || !*p) {
-			p = "unknown";
+			p = "desconhecido";
 		}
     CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, p, 0, 0, textStyle);
   }
@@ -1134,7 +1134,7 @@ static void CG_DrawAreaChat(rectDef_t *rect, float scale, vec4_t color, qhandle_
 const char *CG_GetKillerText() {
 	const char *s = "";
 	if ( cg.killerName[0] ) {
-		s = va("Fragged by %s", cg.killerName );
+		s = va("Fragado por %s", cg.killerName );
 	}
 	return s;
 }
@@ -1171,15 +1171,15 @@ const char *CG_GetGameStatusText() {
 	const char *s = "";
 	if ( cgs.gametype < GT_TEAM) {
 		if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR ) {
-			s = va("%s place with %i",CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),cg.snap->ps.persistant[PERS_SCORE] );
+			s = va("%s lugar com %i",CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),cg.snap->ps.persistant[PERS_SCORE] );
 		}
 	} else {
 		if ( cg.teamScores[0] == cg.teamScores[1] ) {
-			s = va("Teams are tied at %i", cg.teamScores[0] );
+			s = va("Times empatados em %i", cg.teamScores[0] );
 		} else if ( cg.teamScores[0] >= cg.teamScores[1] ) {
-			s = va("Red leads Blue, %i to %i", cg.teamScores[0], cg.teamScores[1] );
+			s = va("Vermelho lidera %i a %i", cg.teamScores[0], cg.teamScores[1] );
 		} else {
-			s = va("Blue leads Red, %i to %i", cg.teamScores[1], cg.teamScores[0] );
+			s = va("Azul lidera %i a %i", cg.teamScores[1], cg.teamScores[0] );
 		}
 	}
 	return s;
@@ -1191,17 +1191,17 @@ static void CG_DrawGameStatus(rectDef_t *rect, float scale, vec4_t color, qhandl
 
 const char *CG_GameTypeString() {
 	if ( cgs.gametype == GT_FFA ) {
-		return "Free For All";
+		return "Todos Contra Todos";
 	} else if ( cgs.gametype == GT_TEAM ) {
-		return "Team Deathmatch";
+		return "Mata-Mata em Equipe";
 	} else if ( cgs.gametype == GT_CTF ) {
-		return "Capture the Flag";
+		return "Capture a Bandeira";
 	} else if ( cgs.gametype == GT_1FCTF ) {
-		return "One Flag CTF";
+		return "CTF de Uma Bandeira";
 	} else if ( cgs.gametype == GT_OBELISK ) {
-		return "Overload";
+		return "Sobrecarga";
 	} else if ( cgs.gametype == GT_HARVESTER ) {
-		return "Harvester";
+		return "Colheitadeira";
 	}
 	return "";
 }
@@ -1372,7 +1372,7 @@ void CG_DrawNewTeamInfo(rectDef_t *rect, float text_x, float text_y, float scale
 
 			p = CG_ConfigString(CS_LOCATIONS + ci->location);
 			if (!p || !*p) {
-				p = "unknown";
+				p = "desconhecido";
 			}
 
 			xx += leftOver / 3 + 2;

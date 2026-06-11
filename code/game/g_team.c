@@ -322,7 +322,7 @@ void Team_FragBonuses(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker
 		attacker->client->pers.teamState.lastfraggedcarrier = level.time;
 		AddScore(attacker, targ->r.currentOrigin, CTF_FRAG_CARRIER_BONUS);
 		attacker->client->pers.teamState.fragcarrier++;
-		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragged %s's flag carrier!\n",
+		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragou o portador da bandeira do time %s!\n",
 			attacker->client->pers.netname, TeamName(team));
 
 		// the target had the flag, clear the hurt carrier
@@ -340,7 +340,7 @@ void Team_FragBonuses(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker
 		attacker->client->pers.teamState.lastfraggedcarrier = level.time;
 		AddScore(attacker, targ->r.currentOrigin, CTF_FRAG_CARRIER_BONUS * tokens * tokens);
 		attacker->client->pers.teamState.fragcarrier++;
-		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragged %s's skull carrier!\n",
+		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragou o portador de caveiras do time %s!\n",
 			attacker->client->pers.netname, TeamName(team));
 
 		// the target had the flag, clear the hurt carrier
@@ -646,10 +646,10 @@ void Team_CaptureFlagSound( gentity_t *ent, int team ) {
 void Team_ReturnFlag( int team ) {
 	Team_ReturnFlagSound(Team_ResetFlag(team), team);
 	if( team == TEAM_FREE ) {
-		PrintMsg(NULL, "The flag has returned!\n" );
+		PrintMsg(NULL, "A bandeira retornou!\n" );
 	}
 	else {
-		PrintMsg(NULL, "The %s flag has returned!\n", TeamName(team));
+		PrintMsg(NULL, "A bandeira do time %s retornou!\n", TeamName(team));
 	}
 }
 
@@ -717,7 +717,7 @@ int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, int team ) {
 
 	if ( ent->flags & FL_DROPPED_ITEM ) {
 		// hey, its not home.  return it by teleporting it back
-		PrintMsg( NULL, "%s" S_COLOR_WHITE " returned the %s flag!\n", 
+		PrintMsg( NULL, "%s" S_COLOR_WHITE " retornou a bandeira do time %s!\n",
 			cl->pers.netname, TeamName(team));
 		AddScore(other, ent->r.currentOrigin, CTF_RECOVERY_BONUS);
 		other->client->pers.teamState.flagrecovery++;
@@ -736,11 +736,11 @@ int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, int team ) {
 		return 0; // We don't have the flag
 #ifdef MISSIONPACK
 	if( g_gametype.integer == GT_1FCTF ) {
-		PrintMsg( NULL, "%s" S_COLOR_WHITE " captured the flag!\n", cl->pers.netname );
+		PrintMsg( NULL, "%s" S_COLOR_WHITE " capturou a bandeira!\n", cl->pers.netname );
 	}
 	else {
 #endif
-	PrintMsg( NULL, "%s" S_COLOR_WHITE " captured the %s flag!\n", cl->pers.netname, TeamName(OtherTeam(team)));
+	PrintMsg( NULL, "%s" S_COLOR_WHITE " capturou a bandeira do time %s!\n", cl->pers.netname, TeamName(OtherTeam(team)));
 #ifdef MISSIONPACK
 	}
 #endif
@@ -815,7 +815,7 @@ int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, int team ) {
 
 #ifdef MISSIONPACK
 	if( g_gametype.integer == GT_1FCTF ) {
-		PrintMsg (NULL, "%s" S_COLOR_WHITE " got the flag!\n", other->client->pers.netname );
+		PrintMsg (NULL, "%s" S_COLOR_WHITE " pegou a bandeira!\n", other->client->pers.netname );
 
 		cl->ps.powerups[PW_NEUTRALFLAG] = INT_MAX; // flags never expire
 
@@ -828,7 +828,7 @@ int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, int team ) {
 	}
 	else{
 #endif
-		PrintMsg (NULL, "%s" S_COLOR_WHITE " got the %s flag!\n",
+		PrintMsg (NULL, "%s" S_COLOR_WHITE " pegou a bandeira do time %s!\n",
 			other->client->pers.netname, TeamName(team));
 
 		if (team == TEAM_RED)
@@ -881,7 +881,7 @@ int Pickup_Team( gentity_t *ent, gentity_t *other ) {
 	}
 #endif
 	else {
-		PrintMsg ( other, "Don't know what team the flag is on.\n");
+		PrintMsg ( other, "Nao sei de qual time e a bandeira.\n");
 		return 0;
 	}
 #ifdef MISSIONPACK
@@ -1271,7 +1271,7 @@ static void ObeliskTouch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 		return;
 	}
 
-	PrintMsg(NULL, "%s" S_COLOR_WHITE " brought in %i skull%s.\n",
+	PrintMsg(NULL, "%s" S_COLOR_WHITE " trouxe %i caveira%s.\n",
 					other->client->pers.netname, tokens, tokens ? "s" : "" );
 
 	AddTeamScore(self->s.pos.trBase, other->client->sess.sessionTeam, tokens);

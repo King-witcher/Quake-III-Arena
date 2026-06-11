@@ -75,7 +75,7 @@ static int gamecodetoui[] = {4,2,3,0,5,1,6};
 static int uitogamecode[] = {4,6,2,3,1,5,7};
 
 static const char *handicap_items[] = {
-	"None",
+	"Nenhum",
 	"95",
 	"90",
 	"85",
@@ -127,7 +127,7 @@ static void PlayerSettings_DrawName( void *self ) {
 		color = text_color_highlight;
 	}
 
-	UI_DrawProportionalString( basex, y, "Name", style, color );
+	UI_DrawProportionalString( basex, y, "Nome", style, color );
 
 	// draw the actual name
 	basex += 64;
@@ -218,7 +218,7 @@ static void PlayerSettings_DrawEffects( void *self ) {
 		color = text_color_highlight;
 	}
 
-	UI_DrawProportionalString( item->generic.x, item->generic.y, "Effects", style, color );
+	UI_DrawProportionalString( item->generic.x, item->generic.y, "Efeitos", style, color );
 
 	UI_DrawHandlePic( item->generic.x + 64, item->generic.y + PROP_HEIGHT + 8, 128, 8, s_playersettings.fxBasePic );
 	UI_DrawHandlePic( item->generic.x + 64 + item->curvalue * 16 + 8, item->generic.y + PROP_HEIGHT + 6, 16, 12, s_playersettings.fxPic[item->curvalue] );
@@ -364,7 +364,7 @@ static void PlayerSettings_MenuInit( void ) {
 	s_playersettings.banner.generic.type  = MTYPE_BTEXT;
 	s_playersettings.banner.generic.x     = 320;
 	s_playersettings.banner.generic.y     = 16;
-	s_playersettings.banner.string        = "PLAYER SETTINGS";
+	s_playersettings.banner.string        = "CONFIG DO JOGADOR";
 	s_playersettings.banner.color         = color_white;
 	s_playersettings.banner.style         = UI_CENTER;
 

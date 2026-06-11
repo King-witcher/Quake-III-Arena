@@ -222,7 +222,7 @@ UI_AddBotsMenu_Draw
 =================
 */
 static void UI_AddBotsMenu_Draw( void ) {
-	UI_DrawBannerString( 320, 16, "ADD BOTS", UI_CENTER, color_white );
+	UI_DrawBannerString( 320, 16, "ADICIONAR BOTS", UI_CENTER, color_white );
 	UI_DrawNamedPic( 320-233, 240-166, 466, 332, ART_BACKGROUND );
 
 	// standard menu drawing
@@ -236,22 +236,22 @@ UI_AddBotsMenu_Init
 =================
 */
 static const char *skillNames[] = {
-	"I Can Win",
-	"Bring It On",
-	"Hurt Me Plenty",
+	"Posso Vencer",
+	"Manda Ver",
+	"Me Castigue",
 	"Hardcore",
-	"Nightmare!",
+	"Pesadelo!",
 	0
 };
 
 static const char *teamNames1[] = {
-	"Free",
+	"Livre",
 	0
 };
 
 static const char *teamNames2[] = {
-	"Red",
-	"Blue",
+	"Vermelho",
+	"Azul",
 	0
 };
 
@@ -321,7 +321,7 @@ static void UI_AddBotsMenu_Init( void ) {
 	addBotsMenuInfo.skill.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	addBotsMenuInfo.skill.generic.x			= 320;
 	addBotsMenuInfo.skill.generic.y			= y;
-	addBotsMenuInfo.skill.generic.name		= "Skill:";
+	addBotsMenuInfo.skill.generic.name		= "Nivel:";
 	addBotsMenuInfo.skill.generic.id		= ID_SKILL;
 	addBotsMenuInfo.skill.itemnames			= skillNames;
 	addBotsMenuInfo.skill.curvalue			= Com_Clamp( 0, 4, (int)trap_Cvar_VariableValue( "g_spSkill" ) - 1 );
@@ -331,7 +331,7 @@ static void UI_AddBotsMenu_Init( void ) {
 	addBotsMenuInfo.team.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	addBotsMenuInfo.team.generic.x			= 320;
 	addBotsMenuInfo.team.generic.y			= y;
-	addBotsMenuInfo.team.generic.name		= "Team: ";
+	addBotsMenuInfo.team.generic.name		= "Time: ";
 	addBotsMenuInfo.team.generic.id			= ID_TEAM;
 	if( gametype >= GT_TEAM ) {
 		addBotsMenuInfo.team.itemnames		= teamNames2;

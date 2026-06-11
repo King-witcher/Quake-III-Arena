@@ -942,7 +942,7 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 			if (lwidth) {
 				p = CG_ConfigString(CS_LOCATIONS + ci->location);
 				if (!p || !*p)
-					p = "unknown";
+					p = "desconhecido";
 				len = CG_DrawStrlen(p);
 				if (len > lwidth)
 					len = lwidth;
@@ -1659,7 +1659,7 @@ static void CG_DrawDisconnect( void ) {
 	}
 
 	// also add text in center of screen
-	s = "Connection Interrupted"; // bk 010215 - FIXME
+	s = "Conexao Interrompida"; // bk 010215 - FIXME
 	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 	CG_DrawBigString( 320 - w/2, 100, s, 1.0F);
 
@@ -2056,12 +2056,12 @@ CG_DrawSpectator
 =================
 */
 static void CG_DrawSpectator(void) {
-	CG_DrawBigString(320 - 9 * 8, 440, "SPECTATOR", 1.0F);
+	CG_DrawBigString(320 - 9 * 8, 440, "ESPECTADOR", 1.0F);
 	if ( cgs.gametype == GT_TOURNAMENT ) {
-		CG_DrawBigString(320 - 15 * 8, 460, "waiting to play", 1.0F);
+		CG_DrawBigString(320 - 15 * 8, 460, "aguardando para jogar", 1.0F);
 	}
 	else if ( cgs.gametype >= GT_TEAM ) {
-		CG_DrawBigString(320 - 39 * 8, 460, "press ESC and use the JOIN menu to play", 1.0F);
+		CG_DrawBigString(320 - 39 * 8, 460, "tecle ESC e use o menu ENTRAR para jogar", 1.0F);
 	}
 }
 
@@ -2089,12 +2089,12 @@ static void CG_DrawVote(void) {
 		sec = 0;
 	}
 #ifdef MISSIONPACK
-	s = va("VOTE(%i):%s yes:%i no:%i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo);
+	s = va("VOTACAO(%i):%s sim:%i nao:%i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo);
 	CG_DrawSmallString( 0, 58, s, 1.0F );
-	s = "or press ESC then click Vote";
+	s = "ou tecle ESC e clique em Votar";
 	CG_DrawSmallString( 0, 58 + SMALLCHAR_HEIGHT + 2, s, 1.0F );
 #else
-	s = va("VOTE(%i):%s yes:%i no:%i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo );
+	s = va("VOTACAO(%i):%s sim:%i nao:%i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo );
 	CG_DrawSmallString( 0, 58, s, 1.0F );
 #endif
 }
@@ -2129,7 +2129,7 @@ static void CG_DrawTeamVote(void) {
 	if ( sec < 0 ) {
 		sec = 0;
 	}
-	s = va("TEAMVOTE(%i):%s yes:%i no:%i", sec, cgs.teamVoteString[cs_offset],
+	s = va("VOTACAO EQUIPE(%i):%s sim:%i nao:%i", sec, cgs.teamVoteString[cs_offset],
 							cgs.teamVoteYes[cs_offset], cgs.teamVoteNo[cs_offset] );
 	CG_DrawSmallString( 0, 90, s, 1.0F );
 }
@@ -2245,7 +2245,7 @@ static qboolean CG_DrawFollow( void ) {
 	color[3] = 1;
 
 
-	CG_DrawBigString( 320 - 9 * 8, 24, "following", 1.0F );
+	CG_DrawBigString( 320 - 9 * 8, 24, "assistindo", 1.0F );
 
 	name = cgs.clientinfo[ cg.snap->ps.clientNum ].name;
 
@@ -2276,9 +2276,9 @@ static void CG_DrawAmmoWarning( void ) {
 	}
 
 	if ( cg.lowAmmoWarning == 2 ) {
-		s = "OUT OF AMMO";
+		s = "SEM MUNICAO";
 	} else {
-		s = "LOW AMMO WARNING";
+		s = "AVISO DE POUCA MUNICAO";
 	}
 	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 	CG_DrawBigString(320 - w / 2, 64, s, 1.0F);
@@ -2315,9 +2315,9 @@ static void CG_DrawProxWarning( void ) {
   }
 
   if (proxTick != 0) {
-    Com_sprintf(s, sizeof(s), "INTERNAL COMBUSTION IN: %i", proxTick);
+    Com_sprintf(s, sizeof(s), "COMBUSTAO INTERNA EM: %i", proxTick);
   } else {
-    Com_sprintf(s, sizeof(s), "YOU HAVE BEEN MINED");
+    Com_sprintf(s, sizeof(s), "VOCE FOI MINADO");
   }
 
 	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
@@ -2346,7 +2346,7 @@ static void CG_DrawWarmup( void ) {
 	}
 
 	if ( sec < 0 ) {
-		s = "Waiting for players";
+		s = "Aguardando jogadores";
 		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
 		CG_DrawBigString(320 - w / 2, 24, s, 1.0F);
 		cg.warmupCount = 0;
@@ -2385,18 +2385,18 @@ static void CG_DrawWarmup( void ) {
 		}
 	} else {
 		if ( cgs.gametype == GT_FFA ) {
-			s = "Free For All";
+			s = "Todos Contra Todos";
 		} else if ( cgs.gametype == GT_TEAM ) {
-			s = "Team Deathmatch";
+			s = "Mata-Mata em Equipe";
 		} else if ( cgs.gametype == GT_CTF ) {
-			s = "Capture the Flag";
+			s = "Capture a Bandeira";
 #ifdef MISSIONPACK
 		} else if ( cgs.gametype == GT_1FCTF ) {
-			s = "One Flag CTF";
+			s = "CTF de Uma Bandeira";
 		} else if ( cgs.gametype == GT_OBELISK ) {
-			s = "Overload";
+			s = "Sobrecarga";
 		} else if ( cgs.gametype == GT_HARVESTER ) {
-			s = "Harvester";
+			s = "Colheitadeira";
 #endif
 		} else {
 			s = "";
@@ -2421,7 +2421,7 @@ static void CG_DrawWarmup( void ) {
 		cg.warmup = 0;
 		sec = 0;
 	}
-	s = va( "Starts in: %i", sec + 1 );
+	s = va( "Comeca em: %i", sec + 1 );
 	if ( sec != cg.warmupCount ) {
 		cg.warmupCount = sec;
 		switch ( sec ) {

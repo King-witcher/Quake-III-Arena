@@ -176,10 +176,10 @@ void CG_DrawInformation( void ) {
 	// the first 150 rows are reserved for the client connection
 	// screen to write into
 	if ( cg.infoScreenText[0] ) {
-		UI_DrawProportionalString( 320, 128-32, va("Loading... %s", cg.infoScreenText),
+		UI_DrawProportionalString( 320, 128-32, va("Carregando... %s", cg.infoScreenText),
 			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
 	} else {
-		UI_DrawProportionalString( 320, 128-32, "Awaiting snapshot...",
+		UI_DrawProportionalString( 320, 128-32, "Aguardando snapshot...",
 			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
 	}
 
@@ -200,7 +200,7 @@ void CG_DrawInformation( void ) {
 		// pure server
 		s = Info_ValueForKey( sysInfo, "sv_pure" );
 		if ( s[0] == '1' ) {
-			UI_DrawProportionalString( 320, y, "Pure Server",
+			UI_DrawProportionalString( 320, y, "Servidor Puro",
 				UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
 			y += PROP_HEIGHT;
 		}
@@ -228,7 +228,7 @@ void CG_DrawInformation( void ) {
 	// cheats warning
 	s = Info_ValueForKey( sysInfo, "sv_cheats" );
 	if ( s[0] == '1' ) {
-		UI_DrawProportionalString( 320, y, "CHEATS ARE ENABLED",
+		UI_DrawProportionalString( 320, y, "TRAPACAS ATIVADAS",
 			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
 		y += PROP_HEIGHT;
 	}
@@ -236,33 +236,33 @@ void CG_DrawInformation( void ) {
 	// game type
 	switch ( cgs.gametype ) {
 	case GT_FFA:
-		s = "Free For All";
+		s = "Todos Contra Todos";
 		break;
 	case GT_SINGLE_PLAYER:
-		s = "Single Player";
+		s = "Um Jogador";
 		break;
 	case GT_TOURNAMENT:
-		s = "Tournament";
+		s = "Torneio";
 		break;
 	case GT_TEAM:
-		s = "Team Deathmatch";
+		s = "Mata-Mata em Equipe";
 		break;
 	case GT_CTF:
-		s = "Capture The Flag";
+		s = "Capture a Bandeira";
 		break;
 #ifdef MISSIONPACK
 	case GT_1FCTF:
-		s = "One Flag CTF";
+		s = "CTF de Uma Bandeira";
 		break;
 	case GT_OBELISK:
-		s = "Overload";
+		s = "Sobrecarga";
 		break;
 	case GT_HARVESTER:
-		s = "Harvester";
+		s = "Colheitadeira";
 		break;
 #endif
 	default:
-		s = "Unknown Gametype";
+		s = "Tipo de Jogo Desconhecido";
 		break;
 	}
 	UI_DrawProportionalString( 320, y, s,

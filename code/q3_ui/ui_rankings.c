@@ -306,7 +306,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.login.generic.callback	= Rankings_MenuEvent;
 	s_rankings.login.generic.x			= 320;
 	s_rankings.login.generic.y			= y;
-	s_rankings.login.string				= "LOGIN";
+	s_rankings.login.string				= "ENTRAR";
 	s_rankings.login.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.login.color				= colorRed;
 	y += 20;
@@ -317,7 +317,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.logout.generic.callback	= Rankings_MenuEvent;
 	s_rankings.logout.generic.x			= 320;
 	s_rankings.logout.generic.y			= y;
-	s_rankings.logout.string				= "LOGOUT";
+	s_rankings.logout.string				= "SAIR DA CONTA";
 	s_rankings.logout.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.logout.color				= colorRed;
 
@@ -327,7 +327,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.create.generic.callback	= Rankings_MenuEvent;
 	s_rankings.create.generic.x			= 320;
 	s_rankings.create.generic.y			= y;
-	s_rankings.create.string			= "SIGN UP";
+	s_rankings.create.string			= "CADASTRAR";
 	s_rankings.create.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.create.color				= colorRed;
 	y += 20;
@@ -338,7 +338,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.spectate.generic.callback	= Rankings_MenuEvent;
 	s_rankings.spectate.generic.x			= 320;
 	s_rankings.spectate.generic.y			= y;
-	s_rankings.spectate.string				= "SPECTATE";
+	s_rankings.spectate.string				= "ASSISTIR";
 	s_rankings.spectate.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.spectate.color				= colorRed;
 	y += 20;
@@ -349,7 +349,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.setup.generic.callback	= Rankings_MenuEvent;
 	s_rankings.setup.generic.x			= 320;
 	s_rankings.setup.generic.y			= y;
-	s_rankings.setup.string				= "SETUP";
+	s_rankings.setup.string				= "CONFIGURACAO";
 	s_rankings.setup.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.setup.color				= colorRed;
 	y += 20;
@@ -360,7 +360,7 @@ void Rankings_MenuInit( void ) {
 	s_rankings.leave.generic.callback	= Rankings_MenuEvent;
 	s_rankings.leave.generic.x			= 320;
 	s_rankings.leave.generic.y			= y;
-	s_rankings.leave.string				= "LEAVE ARENA";
+	s_rankings.leave.string				= "SAIR DA ARENA";
 	s_rankings.leave.style				= UI_CENTER|UI_SMALLFONT;
 	s_rankings.leave.color				= colorRed;
 	y += 20;

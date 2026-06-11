@@ -48,7 +48,7 @@ SOUND OPTIONS MENU
 
 
 static const char *quality_items[] = {
-	"Low", "High", 0
+	"Baixa", "Alta", 0
 };
 
 typedef struct {
@@ -159,7 +159,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.banner.generic.flags		= QMF_CENTER_JUSTIFY;
 	soundOptionsInfo.banner.generic.x			= 320;
 	soundOptionsInfo.banner.generic.y			= 16;
-	soundOptionsInfo.banner.string				= "SYSTEM SETUP";
+	soundOptionsInfo.banner.string				= "CONFIGURACAO DE SISTEMA";
 	soundOptionsInfo.banner.color				= color_white;
 	soundOptionsInfo.banner.style				= UI_CENTER;
 
@@ -185,7 +185,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.graphics.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.graphics.generic.x			= 216;
 	soundOptionsInfo.graphics.generic.y			= 240 - 2 * PROP_HEIGHT;
-	soundOptionsInfo.graphics.string			= "GRAPHICS";
+	soundOptionsInfo.graphics.string			= "GRAFICOS";
 	soundOptionsInfo.graphics.style				= UI_RIGHT;
 	soundOptionsInfo.graphics.color				= color_red;
 
@@ -195,7 +195,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.display.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.display.generic.x			= 216;
 	soundOptionsInfo.display.generic.y			= 240 - PROP_HEIGHT;
-	soundOptionsInfo.display.string				= "DISPLAY";
+	soundOptionsInfo.display.string				= "VIDEO";
 	soundOptionsInfo.display.style				= UI_RIGHT;
 	soundOptionsInfo.display.color				= color_red;
 
@@ -205,7 +205,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.sound.generic.callback		= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.sound.generic.x			= 216;
 	soundOptionsInfo.sound.generic.y			= 240;
-	soundOptionsInfo.sound.string				= "SOUND";
+	soundOptionsInfo.sound.string				= "SOM";
 	soundOptionsInfo.sound.style				= UI_RIGHT;
 	soundOptionsInfo.sound.color				= color_red;
 
@@ -215,13 +215,13 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.network.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.network.generic.x			= 216;
 	soundOptionsInfo.network.generic.y			= 240 + PROP_HEIGHT;
-	soundOptionsInfo.network.string				= "NETWORK";
+	soundOptionsInfo.network.string				= "REDE";
 	soundOptionsInfo.network.style				= UI_RIGHT;
 	soundOptionsInfo.network.color				= color_red;
 
 	y = 240 - 1.5 * (BIGCHAR_HEIGHT + 2);
 	soundOptionsInfo.sfxvolume.generic.type		= MTYPE_SLIDER;
-	soundOptionsInfo.sfxvolume.generic.name		= "Effects Volume:";
+	soundOptionsInfo.sfxvolume.generic.name		= "Volume de Efeitos:";
 	soundOptionsInfo.sfxvolume.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	soundOptionsInfo.sfxvolume.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.sfxvolume.generic.id		= ID_EFFECTSVOLUME;
@@ -232,7 +232,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 
 	y += BIGCHAR_HEIGHT+2;
 	soundOptionsInfo.musicvolume.generic.type		= MTYPE_SLIDER;
-	soundOptionsInfo.musicvolume.generic.name		= "Music Volume:";
+	soundOptionsInfo.musicvolume.generic.name		= "Volume da Musica:";
 	soundOptionsInfo.musicvolume.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	soundOptionsInfo.musicvolume.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.musicvolume.generic.id			= ID_MUSICVOLUME;
@@ -243,7 +243,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 
 	y += BIGCHAR_HEIGHT+2;
 	soundOptionsInfo.quality.generic.type		= MTYPE_SPINCONTROL;
-	soundOptionsInfo.quality.generic.name		= "Sound Quality:";
+	soundOptionsInfo.quality.generic.name		= "Qualidade do Som:";
 	soundOptionsInfo.quality.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	soundOptionsInfo.quality.generic.callback	= UI_SoundOptionsMenu_Event;
 	soundOptionsInfo.quality.generic.id			= ID_QUALITY;

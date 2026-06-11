@@ -229,7 +229,7 @@ static void Demos_MenuInit( void ) {
 	s_demos.list.columns			= 3;
 
 	if (!s_demos.list.numitems) {
-		strcpy( s_demos.names, "No Demos Found." );
+		strcpy( s_demos.names, "Nenhum Demo Encontrado." );
 		s_demos.list.numitems = 1;
 
 		//degenerate case, not selectable

@@ -93,9 +93,9 @@ static void DriverInfo_MenuDraw( void )
 
 	Menu_Draw( &s_driverinfo.menu );
 
-	UI_DrawString( 320, 80, "VENDOR", UI_CENTER|UI_SMALLFONT, color_red );
-	UI_DrawString( 320, 152, "PIXELFORMAT", UI_CENTER|UI_SMALLFONT, color_red );
-	UI_DrawString( 320, 192, "EXTENSIONS", UI_CENTER|UI_SMALLFONT, color_red );
+	UI_DrawString( 320, 80, "FABRICANTE", UI_CENTER|UI_SMALLFONT, color_red );
+	UI_DrawString( 320, 152, "FORMATO DE PIXEL", UI_CENTER|UI_SMALLFONT, color_red );
+	UI_DrawString( 320, 192, "EXTENSOES", UI_CENTER|UI_SMALLFONT, color_red );
 
 	UI_DrawString( 320, 80+16, uis.glconfig.vendor_string, UI_CENTER|UI_SMALLFONT, text_color_normal );
 	UI_DrawString( 320, 96+16, uis.glconfig.version_string, UI_CENTER|UI_SMALLFONT, text_color_normal );
@@ -154,7 +154,7 @@ static void UI_DriverInfo_Menu( void )
 	s_driverinfo.banner.generic.type  = MTYPE_BTEXT;
 	s_driverinfo.banner.generic.x	  = 320;
 	s_driverinfo.banner.generic.y	  = 16;
-	s_driverinfo.banner.string		  = "DRIVER INFO";
+	s_driverinfo.banner.string		  = "INFO DO DRIVER";
 	s_driverinfo.banner.color	      = color_white;
 	s_driverinfo.banner.style	      = UI_CENTER;
 
@@ -721,41 +721,41 @@ void GraphicsOptions_MenuInit( void )
 {
 	static const char *s_driver_names[] =
 	{
-		"Default",
+		"Padrao",
 		"Voodoo",
 		0
 	};
 
 	static const char *tq_names[] =
 	{
-		"Default",
-		"16 bit",
-		"32 bit",
+		"Padrao",
+		"16 bits",
+		"32 bits",
 		0
 	};
 
 	static const char *s_graphics_options_names[] =
 	{
-		"High Quality",
+		"Alta Qualidade",
 		"Normal",
-		"Fast",
-		"Fastest",
-		"Custom",
+		"Rapido",
+		"Mais Rapido",
+		"Personalizado",
 		0
 	};
 
 	static const char *lighting_names[] =
 	{
 		"Lightmap",
-		"Vertex",
+		"Vertice",
 		0
 	};
 
 	static const char *colordepth_names[] =
 	{
-		"Default",
-		"16 bit",
-		"32 bit",
+		"Padrao",
+		"16 bits",
+		"32 bits",
 		0
 	};
 
@@ -772,7 +772,7 @@ void GraphicsOptions_MenuInit( void )
 		"1280x1024",
 		"1600x1200",
 		"2048x1536",
-		"856x480 wide screen",
+		"856x480 tela larga",
 		0
 	};
 	static const char *filter_names[] =
@@ -783,15 +783,15 @@ void GraphicsOptions_MenuInit( void )
 	};
 	static const char *quality_names[] =
 	{
-		"Low",
-		"Medium",
-		"High",
+		"Baixo",
+		"Medio",
+		"Alto",
 		0
 	};
 	static const char *enabled_names[] =
 	{
-		"Off",
-		"On",
+		"Desligado",
+		"Ligado",
 		0
 	};
 
@@ -809,7 +809,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.banner.generic.type  = MTYPE_BTEXT;
 	s_graphicsoptions.banner.generic.x	   = 320;
 	s_graphicsoptions.banner.generic.y	   = 16;
-	s_graphicsoptions.banner.string  	   = "SYSTEM SETUP";
+	s_graphicsoptions.banner.string  	   = "CONFIGURACAO DO SISTEMA";
 	s_graphicsoptions.banner.color         = color_white;
 	s_graphicsoptions.banner.style         = UI_CENTER;
 
@@ -835,7 +835,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.graphics.generic.callback	= GraphicsOptions_Event;
 	s_graphicsoptions.graphics.generic.x		= 216;
 	s_graphicsoptions.graphics.generic.y		= 240 - 2 * PROP_HEIGHT;
-	s_graphicsoptions.graphics.string			= "GRAPHICS";
+	s_graphicsoptions.graphics.string			= "GRAFICOS";
 	s_graphicsoptions.graphics.style			= UI_RIGHT;
 	s_graphicsoptions.graphics.color			= color_red;
 
@@ -845,7 +845,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.display.generic.callback	= GraphicsOptions_Event;
 	s_graphicsoptions.display.generic.x			= 216;
 	s_graphicsoptions.display.generic.y			= 240 - PROP_HEIGHT;
-	s_graphicsoptions.display.string			= "DISPLAY";
+	s_graphicsoptions.display.string			= "VIDEO";
 	s_graphicsoptions.display.style				= UI_RIGHT;
 	s_graphicsoptions.display.color				= color_red;
 
@@ -855,7 +855,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.sound.generic.callback	= GraphicsOptions_Event;
 	s_graphicsoptions.sound.generic.x			= 216;
 	s_graphicsoptions.sound.generic.y			= 240;
-	s_graphicsoptions.sound.string				= "SOUND";
+	s_graphicsoptions.sound.string				= "SOM";
 	s_graphicsoptions.sound.style				= UI_RIGHT;
 	s_graphicsoptions.sound.color				= color_red;
 
@@ -865,13 +865,13 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.generic.callback	= GraphicsOptions_Event;
 	s_graphicsoptions.network.generic.x			= 216;
 	s_graphicsoptions.network.generic.y			= 240 + PROP_HEIGHT;
-	s_graphicsoptions.network.string			= "NETWORK";
+	s_graphicsoptions.network.string			= "REDE";
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
 	y = 240 - 6 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
+	s_graphicsoptions.list.generic.name     = "Ajustes de Graficos:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.list.generic.x        = 400;
 	s_graphicsoptions.list.generic.y        = y;
@@ -881,7 +881,7 @@ void GraphicsOptions_MenuInit( void )
 	y += 2 * ( BIGCHAR_HEIGHT + 2 );
 
 	s_graphicsoptions.driver.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.driver.generic.name  = "GL Driver:";
+	s_graphicsoptions.driver.generic.name  = "Driver GL:";
 	s_graphicsoptions.driver.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.driver.generic.x     = 400;
 	s_graphicsoptions.driver.generic.y     = y;
@@ -891,7 +891,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_allowExtensions"
 	s_graphicsoptions.allow_extensions.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.allow_extensions.generic.name	    = "GL Extensions:";
+	s_graphicsoptions.allow_extensions.generic.name	    = "Extensoes GL:";
 	s_graphicsoptions.allow_extensions.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.allow_extensions.generic.x	    = 400;
 	s_graphicsoptions.allow_extensions.generic.y	    = y;
@@ -900,7 +900,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_mode"
 	s_graphicsoptions.mode.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.mode.generic.name     = "Video Mode:";
+	s_graphicsoptions.mode.generic.name     = "Modo de Video:";
 	s_graphicsoptions.mode.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.mode.generic.x        = 400;
 	s_graphicsoptions.mode.generic.y        = y;
@@ -911,7 +911,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references "r_colorbits"
 	s_graphicsoptions.colordepth.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.colordepth.generic.name     = "Color Depth:";
+	s_graphicsoptions.colordepth.generic.name     = "Profundidade de Cor:";
 	s_graphicsoptions.colordepth.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.colordepth.generic.x        = 400;
 	s_graphicsoptions.colordepth.generic.y        = y;
@@ -920,7 +920,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_fullscreen"
 	s_graphicsoptions.fs.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.fs.generic.name	  = "Fullscreen:";
+	s_graphicsoptions.fs.generic.name	  = "Tela Cheia:";
 	s_graphicsoptions.fs.generic.flags	  = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.fs.generic.x	      = 400;
 	s_graphicsoptions.fs.generic.y	      = y;
@@ -929,7 +929,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_vertexLight"
 	s_graphicsoptions.lighting.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.lighting.generic.name	 = "Lighting:";
+	s_graphicsoptions.lighting.generic.name	 = "Iluminacao:";
 	s_graphicsoptions.lighting.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.lighting.generic.x	 = 400;
 	s_graphicsoptions.lighting.generic.y	 = y;
@@ -938,7 +938,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_lodBias" & "subdivisions"
 	s_graphicsoptions.geometry.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.geometry.generic.name	 = "Geometric Detail:";
+	s_graphicsoptions.geometry.generic.name	 = "Detalhe Geometrico:";
 	s_graphicsoptions.geometry.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.geometry.generic.x	 = 400;
 	s_graphicsoptions.geometry.generic.y	 = y;
@@ -947,7 +947,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_picmip"
 	s_graphicsoptions.tq.generic.type	= MTYPE_SLIDER;
-	s_graphicsoptions.tq.generic.name	= "Texture Detail:";
+	s_graphicsoptions.tq.generic.name	= "Detalhe de Textura:";
 	s_graphicsoptions.tq.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.tq.generic.x		= 400;
 	s_graphicsoptions.tq.generic.y		= y;
@@ -958,7 +958,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_textureBits"
 	s_graphicsoptions.texturebits.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.texturebits.generic.name	= "Texture Quality:";
+	s_graphicsoptions.texturebits.generic.name	= "Qualidade de Textura:";
 	s_graphicsoptions.texturebits.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.texturebits.generic.x	    = 400;
 	s_graphicsoptions.texturebits.generic.y	    = y;
@@ -967,7 +967,7 @@ void GraphicsOptions_MenuInit( void )
 
 	// references/modifies "r_textureMode"
 	s_graphicsoptions.filter.generic.type   = MTYPE_SPINCONTROL;
-	s_graphicsoptions.filter.generic.name	= "Texture Filter:";
+	s_graphicsoptions.filter.generic.name	= "Filtro de Textura:";
 	s_graphicsoptions.filter.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.filter.generic.x	    = 400;
 	s_graphicsoptions.filter.generic.y	    = y;
@@ -980,7 +980,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.driverinfo.generic.id       = ID_DRIVERINFO;
 	s_graphicsoptions.driverinfo.generic.x        = 320;
 	s_graphicsoptions.driverinfo.generic.y        = y;
-	s_graphicsoptions.driverinfo.string           = "Driver Info";
+	s_graphicsoptions.driverinfo.string           = "Info do Driver";
 	s_graphicsoptions.driverinfo.style            = UI_CENTER|UI_SMALLFONT;
 	s_graphicsoptions.driverinfo.color            = color_red;
 	y += BIGCHAR_HEIGHT+2;

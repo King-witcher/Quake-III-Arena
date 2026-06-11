@@ -263,7 +263,7 @@ static void CG_Obituary( entityState_t *ent ) {
 			message = "engoliu a granada do";
 			break;
 		case MOD_GRENADE_SPLASH:
-			message = "foi despedaçado pelos estilhaços do";
+			message = "foi despedacado pelos estilhacos do";
 			break;
 		case MOD_ROCKET:
 			message = "engoliu o foguete do";

@@ -100,25 +100,25 @@ MULTIPLAYER MENU (SERVER BROWSER)
 static const char *master_items[] = {
 	"Local",
 	"Internet",
-	"Favorites",
+	"Favoritos",
 	0
 };
 
 static const char *servertype_items[] = {
-	"All",
-	"Free For All",
-	"Team Deathmatch",
-	"Tournament",
-	"Capture the Flag",
+	"Todos",
+	"Todos Contra Todos",
+	"Mata-Mata em Equipe",
+	"Torneio",
+	"Capture a Bandeira",
 	0
 };
 
 static const char *sortkey_items[] = {
-	"Server Name",
-	"Map Name",
-	"Open Player Spots",
-	"Game Type",
-	"Ping Time",
+	"Nome do Servidor",
+	"Nome do Mapa",
+	"Vagas Abertas",
+	"Tipo de Jogo",
+	"Tempo de Ping",
 	0
 };
 
@@ -146,19 +146,19 @@ static char* netnames[] = {
 	NULL
 };
 
-static char quake3worldMessage[] = "Visit www.quake3world.com - News, Community, Events, Files";
+static char quake3worldMessage[] = "Visite www.quake3world.com - Noticias, Comunidade, Eventos, Arquivos";
 
 const char* punkbuster_items[] = {
-	"Disabled",
-	"Enabled",
+	"Desativado",
+	"Ativado",
 	NULL
 };
 
 const char* punkbuster_msg[] = {
-	"PunkBuster will be",
-	"disabled the next time",
-	"Quake III Arena",
-	"is started.",
+	"O PunkBuster sera",
+	"desativado na proxima vez",
+	"que o Quake III Arena",
+	"for iniciado.",
 	NULL
 };
 
@@ -386,8 +386,8 @@ static void ArenaServers_UpdateMenu( void ) {
 		// servers found
 		if( g_arenaservers.refreshservers && ( g_arenaservers.currentping <= g_arenaservers.numqueriedservers ) ) {
 			// show progress
-			Com_sprintf( g_arenaservers.status.string, MAX_STATUSLENGTH, "%d of %d Arena Servers.", g_arenaservers.currentping, g_arenaservers.numqueriedservers);
-			g_arenaservers.statusbar.string  = "Press SPACE to stop";
+			Com_sprintf( g_arenaservers.status.string, MAX_STATUSLENGTH, "%d de %d Servidores de Arena.", g_arenaservers.currentping, g_arenaservers.numqueriedservers);
+			g_arenaservers.statusbar.string  = "Pressione ESPACO para parar";
 			qsort( g_arenaservers.serverlist, *g_arenaservers.numservers, sizeof( servernode_t ), ArenaServers_Compare);
 		}
 		else {
@@ -415,8 +415,8 @@ static void ArenaServers_UpdateMenu( void ) {
 	else {
 		// no servers found
 		if( g_arenaservers.refreshservers ) {
-			strcpy( g_arenaservers.status.string,"Scanning For Servers." );
-			g_arenaservers.statusbar.string = "Press SPACE to stop";
+			strcpy( g_arenaservers.status.string,"Procurando Servidores." );
+			g_arenaservers.statusbar.string = "Pressione ESPACO para parar";
 
 			// disable controls during refresh
 			g_arenaservers.master.generic.flags		|= QMF_GRAYED;
@@ -431,10 +431,10 @@ static void ArenaServers_UpdateMenu( void ) {
 		}
 		else {
 			if( g_arenaservers.numqueriedservers < 0 ) {
-				strcpy(g_arenaservers.status.string,"No Response From Master Server." );
+				strcpy(g_arenaservers.status.string,"Sem Resposta do Servidor Mestre." );
 			}
 			else {
-				strcpy(g_arenaservers.status.string,"No Servers Found." );
+				strcpy(g_arenaservers.status.string,"Nenhum Servidor Encontrado." );
 			}
 
 			// update status bar
@@ -532,7 +532,7 @@ static void ArenaServers_UpdateMenu( void ) {
 		Com_sprintf( buff, MAX_LISTBOXWIDTH, "%-20.20s %-12.12s %2d/%2d %-8.8s %3s %s%3d " S_COLOR_YELLOW "%s", 
 			servernodeptr->hostname, servernodeptr->mapname, servernodeptr->numclients,
  			servernodeptr->maxclients, servernodeptr->gamename,
-			netnames[servernodeptr->nettype], pingColor, servernodeptr->pingtime, servernodeptr->bPB ? "Yes" : "No" );
+			netnames[servernodeptr->nettype], pingColor, servernodeptr->pingtime, servernodeptr->bPB ? "Sim" : "Nao" );
 		j++;
 	}
 
@@ -1146,7 +1146,7 @@ void ArenaServers_SetType( int type )
 		g_arenaservers.numqueriedservers = *g_arenaservers.numservers; 
 		ArenaServers_UpdateMenu();
 	}
-	strcpy(g_arenaservers.status.string,"hit refresh to update");
+	strcpy(g_arenaservers.status.string,"aperte atualizar para recarregar");
 }
 
 /*
@@ -1265,11 +1265,11 @@ static void ArenaServers_Event( void* ptr, int event ) {
 	case ID_PUNKBUSTER:
 		if (g_arenaservers.punkbuster.curvalue)			
 		{
-			UI_ConfirmMenu_Style( "Enable Punkbuster?",  UI_CENTER|UI_INVERSE|UI_SMALLFONT, (voidfunc_f)NULL, Punkbuster_ConfirmEnable );
+			UI_ConfirmMenu_Style( "Ativar o Punkbuster?",  UI_CENTER|UI_INVERSE|UI_SMALLFONT, (voidfunc_f)NULL, Punkbuster_ConfirmEnable );
 		}
 		else
 		{
-			UI_ConfirmMenu_Style( "Disable Punkbuster?", UI_CENTER|UI_INVERSE|UI_SMALLFONT, (voidfunc_f)NULL, Punkbuster_ConfirmDisable );
+			UI_ConfirmMenu_Style( "Desativar o Punkbuster?", UI_CENTER|UI_INVERSE|UI_SMALLFONT, (voidfunc_f)NULL, Punkbuster_ConfirmDisable );
 		}
 		break;
 	}
@@ -1344,13 +1344,13 @@ static void ArenaServers_MenuInit( void ) {
 	g_arenaservers.banner.generic.flags = QMF_CENTER_JUSTIFY;
 	g_arenaservers.banner.generic.x	    = 320;
 	g_arenaservers.banner.generic.y	    = 16;
-	g_arenaservers.banner.string  		= "ARENA SERVERS";
+	g_arenaservers.banner.string  		= "SERVIDORES DE ARENA";
 	g_arenaservers.banner.style  	    = UI_CENTER;
 	g_arenaservers.banner.color  	    = color_white;
 
 	y = 80;
 	g_arenaservers.master.generic.type			= MTYPE_SPINCONTROL;
-	g_arenaservers.master.generic.name			= "Servers:";
+	g_arenaservers.master.generic.name			= "Servidores:";
 	g_arenaservers.master.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	g_arenaservers.master.generic.callback		= ArenaServers_Event;
 	g_arenaservers.master.generic.id			= ID_MASTER;
@@ -1360,7 +1360,7 @@ static void ArenaServers_MenuInit( void ) {
 
 	y += SMALLCHAR_HEIGHT;
 	g_arenaservers.gametype.generic.type		= MTYPE_SPINCONTROL;
-	g_arenaservers.gametype.generic.name		= "Game Type:";
+	g_arenaservers.gametype.generic.name		= "Tipo de Jogo:";
 	g_arenaservers.gametype.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	g_arenaservers.gametype.generic.callback	= ArenaServers_Event;
 	g_arenaservers.gametype.generic.id			= ID_GAMETYPE;
@@ -1370,7 +1370,7 @@ static void ArenaServers_MenuInit( void ) {
 
 	y += SMALLCHAR_HEIGHT;
 	g_arenaservers.sortkey.generic.type			= MTYPE_SPINCONTROL;
-	g_arenaservers.sortkey.generic.name			= "Sort By:";
+	g_arenaservers.sortkey.generic.name			= "Ordenar Por:";
 	g_arenaservers.sortkey.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	g_arenaservers.sortkey.generic.callback		= ArenaServers_Event;
 	g_arenaservers.sortkey.generic.id			= ID_SORTKEY;
@@ -1380,7 +1380,7 @@ static void ArenaServers_MenuInit( void ) {
 
 	y += SMALLCHAR_HEIGHT;
 	g_arenaservers.showfull.generic.type		= MTYPE_RADIOBUTTON;
-	g_arenaservers.showfull.generic.name		= "Show Full:";
+	g_arenaservers.showfull.generic.name		= "Mostrar Cheios:";
 	g_arenaservers.showfull.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	g_arenaservers.showfull.generic.callback	= ArenaServers_Event;
 	g_arenaservers.showfull.generic.id			= ID_SHOW_FULL;
@@ -1389,7 +1389,7 @@ static void ArenaServers_MenuInit( void ) {
 
 	y += SMALLCHAR_HEIGHT;
 	g_arenaservers.showempty.generic.type		= MTYPE_RADIOBUTTON;
-	g_arenaservers.showempty.generic.name		= "Show Empty:";
+	g_arenaservers.showempty.generic.name		= "Mostrar Vazios:";
 	g_arenaservers.showempty.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	g_arenaservers.showempty.generic.callback	= ArenaServers_Event;
 	g_arenaservers.showempty.generic.id			= ID_SHOW_EMPTY;

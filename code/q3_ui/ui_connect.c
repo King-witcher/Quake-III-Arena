@@ -58,18 +58,18 @@ static void UI_PrintTime ( char *buf, int bufsize, int time ) {
 	time /= 1000;  // change to seconds
 
 	if (time > 3600) { // in the hours range
-		Com_sprintf( buf, bufsize, "%d hr %d min", time / 3600, (time % 3600) / 60 );
+		Com_sprintf( buf, bufsize, "%d h %d min", time / 3600, (time % 3600) / 60 );
 	} else if (time > 60) { // mins
-		Com_sprintf( buf, bufsize, "%d min %d sec", time / 60, time % 60 );
+		Com_sprintf( buf, bufsize, "%d min %d seg", time / 60, time % 60 );
 	} else  { // secs
-		Com_sprintf( buf, bufsize, "%d sec", time );
+		Com_sprintf( buf, bufsize, "%d seg", time );
 	}
 }
 
 static void UI_DisplayDownloadInfo( const char *downloadName ) {
-	static char dlText[]	= "Downloading:";
-	static char etaText[]	= "Estimated time left:";
-	static char xferText[]	= "Transfer rate:";
+	static char dlText[]	= "Baixando:";
+	static char etaText[]	= "Tempo restante estimado:";
+	static char xferText[]	= "Taxa de transferencia:";
 
 	int downloadSize, downloadCount, downloadTime;
 	char dlSizeBuf[64], totalSizeBuf[64], xferRateBuf[64], dlTimeBuf[64];
@@ -114,9 +114,9 @@ static void UI_DisplayDownloadInfo( const char *downloadName ) {
 	UI_ReadableSize( totalSizeBuf,	sizeof totalSizeBuf,	downloadSize );
 
 	if (downloadCount < 4096 || !downloadTime) {
-		UI_DrawProportionalString( leftWidth, 160, "estimating", style, color_white );
+		UI_DrawProportionalString( leftWidth, 160, "estimando", style, color_white );
 		UI_DrawProportionalString( leftWidth, 192, 
-			va("(%s of %s copied)", dlSizeBuf, totalSizeBuf), style, color_white );
+			va("(%s de %s copiado)", dlSizeBuf, totalSizeBuf), style, color_white );
 	} else {
 	  // bk010108
 	  //float elapsedTime = (float)(uis.realtime - downloadTime); // current - start (msecs)
@@ -147,22 +147,22 @@ static void UI_DisplayDownloadInfo( const char *downloadName ) {
 			UI_DrawProportionalString( leftWidth, 160, 
 				dlTimeBuf, style, color_white );
 			UI_DrawProportionalString( leftWidth, 192, 
-				va("(%s of %s copied)", dlSizeBuf, totalSizeBuf), style, color_white );
+				va("(%s de %s copiado)", dlSizeBuf, totalSizeBuf), style, color_white );
 		} else {
 			UI_DrawProportionalString( leftWidth, 160, 
-				"estimating", style, color_white );
+				"estimando", style, color_white );
 			if (downloadSize) {
 				UI_DrawProportionalString( leftWidth, 192, 
-					va("(%s of %s copied)", dlSizeBuf, totalSizeBuf), style, color_white );
+					va("(%s de %s copiado)", dlSizeBuf, totalSizeBuf), style, color_white );
 			} else {
 				UI_DrawProportionalString( leftWidth, 192, 
-					va("(%s copied)", dlSizeBuf), style, color_white );
+					va("(%s copiado)", dlSizeBuf), style, color_white );
 			}
 		}
 
 		if (xferRate) {
 			UI_DrawProportionalString( leftWidth, 224, 
-				va("%s/Sec", xferRateBuf), style, color_white );
+				va("%s/Seg", xferRateBuf), style, color_white );
 		}
 	}
 }
@@ -193,10 +193,10 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 
 	info[0] = '\0';
 	if( trap_GetConfigString( CS_SERVERINFO, info, sizeof(info) ) ) {
-		UI_DrawProportionalString( 320, 16, va( "Loading %s", Info_ValueForKey( info, "mapname" ) ), UI_BIGFONT|UI_CENTER|UI_DROPSHADOW, color_white );
+		UI_DrawProportionalString( 320, 16, va( "Carregando %s", Info_ValueForKey( info, "mapname" ) ), UI_BIGFONT|UI_CENTER|UI_DROPSHADOW, color_white );
 	}
 
-	UI_DrawProportionalString( 320, 64, va("Connecting to %s", cstate.servername), UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, menu_text_color );
+	UI_DrawProportionalString( 320, 64, va("Conectando a %s", cstate.servername), UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, menu_text_color );
 	//UI_DrawProportionalString( 320, 96, "Press Esc to abort", UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, menu_text_color );
 
 	// display global MOTD at bottom
@@ -239,10 +239,10 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 
 	switch ( cstate.connState ) {
 	case CA_CONNECTING:
-		s = va("Awaiting challenge...%i", cstate.connectPacketCount);
+		s = va("Aguardando desafio...%i", cstate.connectPacketCount);
 		break;
 	case CA_CHALLENGING:
-		s = va("Awaiting connection...%i", cstate.connectPacketCount);
+		s = va("Aguardando conexao...%i", cstate.connectPacketCount);
 		break;
 	case CA_CONNECTED: {
 		char downloadName[MAX_INFO_VALUE];
@@ -253,7 +253,7 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 				return;
 			}
 		}
-		s = "Awaiting gamestate...";
+		s = "Aguardando estado do jogo...";
 		break;
 	case CA_LOADING:
 		return;
