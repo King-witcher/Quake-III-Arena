@@ -1,0 +1,100 @@
+{
+    // Build + run Quake III Arena from VS Code.
+    //
+    // Requires the C/C++ extension (ms-vscode.cpptools) for the cppvsdbg debugger.
+    //
+    // Filesystem layout (everything on a space-free path, because Quake III's
+    // command-line parser splits on spaces and would truncate a Steam path):
+    //   run\baseq3\*.pk3                  retail game data, copied from Steam
+    //   run\dev\cgamex86.dll, ...         our freshly built game DLLs
+    //   run\dev\vm\cgame.qvm, ...         our freshly built QVMs
+    //
+    // run\dev is loaded as a mod (fs_game=dev) and is searched BEFORE the baseq3
+    // paks, so our DLLs/QVMs override the retail ones. sv_pure 0 lets the engine
+    // load our loose (non-pak) artifacts.
+    //
+    //   vm_game/vm_cgame/vm_ui = 0  -> native DLLs   (run\dev\*x86.dll)
+    //   vm_game/vm_cgame/vm_ui = 1  -> interpreted QVMs (run\dev\vm\*.qvm)
+    //
+    // The QVM logic runs as bytecode, so it is not C-source debuggable; the QVM
+    // configs let you debug the *engine* while it runs the QVM mods.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Quake III — Debug + DLL nativa",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Quake3: build DLL (Debug)",
+            "program": "${workspaceFolder}\\code\\Debug\\quake3.exe",
+            "cwd": "${workspaceFolder}\\run",
+            "args": [
+                "+set", "fs_basepath", "${workspaceFolder}\\run",
+                "+set", "fs_game", "dev",
+                "+set", "sv_pure", "0",
+                "+set", "com_blindlyLoadDLLs", "1",
+                "+set", "developer", "1",
+                "+set", "vm_game", "0",
+                "+set", "vm_cgame", "0",
+                "+set", "vm_ui", "0"
+            ],
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Quake III — Release + DLL nativa",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Quake3: build DLL (Release)",
+            "program": "${workspaceFolder}\\code\\Release\\quake3.exe",
+            "cwd": "${workspaceFolder}\\run",
+            "args": [
+                "+set", "fs_basepath", "${workspaceFolder}\\run",
+                "+set", "fs_game", "dev",
+                "+set", "sv_pure", "0",
+                "+set", "com_blindlyLoadDLLs", "1",
+                "+set", "vm_game", "0",
+                "+set", "vm_cgame", "0",
+                "+set", "vm_ui", "0"
+            ],
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Quake III — Debug + QVM",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Quake3: build QVM (Debug engine)",
+            "program": "${workspaceFolder}\\code\\Debug\\quake3.exe",
+            "cwd": "${workspaceFolder}\\run",
+            "args": [
+                "+set", "fs_basepath", "${workspaceFolder}\\run",
+                "+set", "fs_game", "dev",
+                "+set", "sv_pure", "0",
+                "+set", "developer", "1",
+                "+set", "vm_game", "1",
+                "+set", "vm_cgame", "1",
+                "+set", "vm_ui", "1"
+            ],
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Quake III — Release + QVM",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Quake3: build QVM (Release engine)",
+            "program": "${workspaceFolder}\\code\\Release\\quake3.exe",
+            "cwd": "${workspaceFolder}\\run",
+            "args": [
+                "+set", "fs_basepath", "${workspaceFolder}\\run",
+                "+set", "fs_game", "dev",
+                "+set", "sv_pure", "0",
+                "+set", "vm_game", "1",
+                "+set", "vm_cgame", "1",
+                "+set", "vm_ui", "1"
+            ],
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ]
+}

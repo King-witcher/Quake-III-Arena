@@ -1,0 +1,129 @@
+{
+    // Build tasks for Quake III Arena.
+    //
+    // The engine (quake3.exe) and the three game DLLs (cgamex86.dll,
+    // qagamex86.dll, uix86.dll) are produced by MSBuild from code\quake3.sln.
+    // This machine only has VS 2026 (toolset v145), so the v143 pin in the
+    // .vcxproj files is overridden on the command line.
+    //
+    // Data and deploy steps are plain "xcopy" calls (no scripts). Only the QVM
+    // build uses a script (.vscode\build-qvm.ps1), because it is a ~70-file lcc
+    // compile + q3asm link per VM. xcopy with /d copies only newer files, so the
+    // sync/deploy tasks are cheap to repeat before every launch.
+    //
+    // Filesystem layout (all on a space-free path):
+    //   run\baseq3\*.pk3            retail data, copied from the Steam install
+    //   run\dev\*x86.dll            our game DLLs (loaded as fs_game=dev)
+    //   run\dev\vm\*.qvm            our QVMs (override the retail ones in the paks)
+    //
+    // launch.json points at the four composite tasks at the bottom.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "msbuild: quake3 (Debug)",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\code\\quake3.sln",
+                "/p:Configuration=Debug;Platform=x86;PlatformToolset=v145",
+                "/m",
+                "/nologo"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
+        },
+        {
+            "label": "msbuild: quake3 (Release)",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\code\\quake3.sln",
+                "/p:Configuration=Release;Platform=x86;PlatformToolset=v145",
+                "/m",
+                "/nologo"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
+        },
+        {
+            // One-time copy of the retail paks from Steam into run\baseq3 (no
+            // spaces in the path). /d = only newer, /i = dest is a dir, /y =
+            // overwrite, /q = quiet. Edit the source path if Steam is elsewhere.
+            "label": "sync: Steam data -> run\\baseq3",
+            "type": "process",
+            "command": "xcopy",
+            "args": [
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quake 3 Arena\\baseq3\\*.pk3",
+                "${workspaceFolder}\\run\\baseq3\\",
+                "/d", "/i", "/y", "/q"
+            ],
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
+            "label": "deploy: game DLLs (Debug)",
+            "type": "process",
+            "command": "xcopy",
+            "args": [
+                "${workspaceFolder}\\code\\Debug\\*x86.dll",
+                "${workspaceFolder}\\run\\dev\\",
+                "/i", "/y", "/q"
+            ],
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
+            "label": "deploy: game DLLs (Release)",
+            "type": "process",
+            "command": "xcopy",
+            "args": [
+                "${workspaceFolder}\\code\\Release\\*x86.dll",
+                "${workspaceFolder}\\run\\dev\\",
+                "/i", "/y", "/q"
+            ],
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
+            "label": "build: QVMs (lcc + q3asm)",
+            "type": "process",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}\\.vscode\\build-qvm.ps1",
+                "-Root", "${workspaceFolder}"
+            ],
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
+        },
+
+        // ---- composite tasks used as preLaunchTask in launch.json ----
+        {
+            "label": "Quake3: build DLL (Debug)",
+            "dependsOrder": "sequence",
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Debug)", "deploy: game DLLs (Debug)" ],
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Quake3: build DLL (Release)",
+            "dependsOrder": "sequence",
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Release)", "deploy: game DLLs (Release)" ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Quake3: build QVM (Debug engine)",
+            "dependsOrder": "sequence",
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Debug)", "build: QVMs (lcc + q3asm)" ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Quake3: build QVM (Release engine)",
+            "dependsOrder": "sequence",
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Release)", "build: QVMs (lcc + q3asm)" ],
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}

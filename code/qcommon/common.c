@@ -237,7 +237,9 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 
 #if defined(_WIN32) && defined(_DEBUG)
 	if ( code != ERR_DISCONNECT && code != ERR_NEED_CD ) {
-		if (!com_noErrorInterrupt->integer) {
+		// com_noErrorInterrupt is not registered until late in Com_Init; guard
+		// against a NULL deref when an error fires earlier (e.g. during FS init)
+		if ( com_noErrorInterrupt && !com_noErrorInterrupt->integer ) {
 			__asm {
 				int 0x03
 			}

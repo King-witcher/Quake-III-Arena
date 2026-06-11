@@ -1,0 +1,7 @@
+{
+    // The launch configs use the cppvsdbg debugger, which ships with the
+    // Microsoft C/C++ extension.
+    "recommendations": [
+        "ms-vscode.cpptools"
+    ]
+}
