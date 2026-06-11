@@ -484,6 +484,7 @@ void RB_SurfaceRailRings( void ) {
 void RB_SurfaceRailCore( void ) {
 	refEntity_t *e;
 	int			len;
+	float		width;
 	vec3_t		right;
 	vec3_t		vec;
 	vec3_t		start, end;
@@ -505,7 +506,11 @@ void RB_SurfaceRailCore( void ) {
 	CrossProduct( v1, v2, right );
 	VectorNormalize( right );
 
-	DoRailCore( start, end, right, len, r_railCoreWidth->integer );
+	// allow a per-entity core width (e.g. the thin lightning shaft);
+	// fall back to the global railgun width when none is requested
+	width = e->radius > 0 ? e->radius : r_railCoreWidth->integer;
+
+	DoRailCore( start, end, right, len, width );
 }
 
 /*

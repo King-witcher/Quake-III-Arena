@@ -50,7 +50,8 @@ GAME OPTIONS MENU
 #define ID_FORCEMODEL			135
 #define ID_DRAWTEAMOVERLAY		136
 #define ID_ALLOWDOWNLOAD			137
-#define ID_BACK					138
+#define ID_LIGHTNINGSTYLE		138
+#define ID_BACK					139
 
 #define	NUM_CROSSHAIRS			10
 
@@ -73,6 +74,7 @@ typedef struct {
 	menuradiobutton_s	forcemodel;
 	menulist_s			drawteamoverlay;
 	menuradiobutton_s	allowdownload;
+	menulist_s			lightningstyle;
 	menubitmap_s		back;
 
 	qhandle_t			crosshairShader[NUM_CROSSHAIRS];
@@ -89,6 +91,14 @@ static const char *teamoverlay_names[] =
 	0
 };
 
+static const char *lightningstyle_names[] =
+{
+	"default",
+	"centered",
+	"thin shaft",
+	0
+};
+
 static void Preferences_SetMenuItems( void ) {
 	s_preferences.crosshair.curvalue		= (int)trap_Cvar_VariableValue( "cg_drawCrosshair" ) % NUM_CROSSHAIRS;
 	s_preferences.simpleitems.curvalue		= trap_Cvar_VariableValue( "cg_simpleItems" ) != 0;
@@ -101,6 +111,7 @@ static void Preferences_SetMenuItems( void ) {
 	s_preferences.forcemodel.curvalue		= trap_Cvar_VariableValue( "cg_forcemodel" ) != 0;
 	s_preferences.drawteamoverlay.curvalue	= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "cg_drawTeamOverlay" ) );
 	s_preferences.allowdownload.curvalue	= trap_Cvar_VariableValue( "cl_allowDownload" ) != 0;
+	s_preferences.lightningstyle.curvalue	= Com_Clamp( 0, 2, trap_Cvar_VariableValue( "cg_lightningStyle" ) );
 }
 
 
@@ -160,6 +171,10 @@ static void Preferences_Event( void* ptr, int notification ) {
 	case ID_ALLOWDOWNLOAD:
 		trap_Cvar_SetValue( "cl_allowDownload", s_preferences.allowdownload.curvalue );
 		trap_Cvar_SetValue( "sv_allowDownload", s_preferences.allowdownload.curvalue );
+		break;
+
+	case ID_LIGHTNINGSTYLE:
+		trap_Cvar_SetValue( "cg_lightningStyle", s_preferences.lightningstyle.curvalue );
 		break;
 
 	case ID_BACK:
@@ -357,6 +372,16 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.allowdownload.generic.y	       = y;
 
 	y += BIGCHAR_HEIGHT+2;
+	s_preferences.lightningstyle.generic.type     = MTYPE_SPINCONTROL;
+	s_preferences.lightningstyle.generic.name	  = "Lightning Style:";
+	s_preferences.lightningstyle.generic.flags	  = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.lightningstyle.generic.callback = Preferences_Event;
+	s_preferences.lightningstyle.generic.id       = ID_LIGHTNINGSTYLE;
+	s_preferences.lightningstyle.generic.x	      = PREFERENCES_X_POS;
+	s_preferences.lightningstyle.generic.y	      = y;
+	s_preferences.lightningstyle.itemnames		  = lightningstyle_names;
+
+	y += BIGCHAR_HEIGHT+2;
 	s_preferences.back.generic.type	    = MTYPE_BITMAP;
 	s_preferences.back.generic.name     = ART_BACK0;
 	s_preferences.back.generic.flags    = QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
@@ -383,6 +408,7 @@ static void Preferences_MenuInit( void ) {
 	Menu_AddItem( &s_preferences.menu, &s_preferences.forcemodel );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.drawteamoverlay );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.allowdownload );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.lightningstyle );
 
 	Menu_AddItem( &s_preferences.menu, &s_preferences.back );
 
