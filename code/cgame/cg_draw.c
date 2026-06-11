@@ -2643,6 +2643,80 @@ static void CG_DrawWallhack( void ) {
 	}
 }
 
+/*
+=================
+CG_DrawAimbotLead
+
+When the aimbot is armed (cg_aimbot) and a projectile weapon is selected, draws
+a box at each enemy's lead point — where to aim so the projectile intercepts it,
+accounting for the enemy's velocity/gravity and the projectile speed.
+=================
+*/
+static void CG_DrawAimbotLead( void ) {
+	int				i, num, localNum;
+	centity_t		*cent;
+	entityState_t	*es;
+	int				weapon;
+	float			projSpeed;
+	qboolean		grav;
+	vec3_t			lead, feet, head;
+	float			fx, fy, hx, hy, lx, ly;
+	float			boxX, boxY, boxW, boxH, cx;
+	const vec4_t	colLead = { 1.0f, 0.85f, 0.1f, 1.0f };		// yellow
+
+	if ( !cg_aimbot.integer || !cg.snap ) {
+		return;
+	}
+
+	weapon = cg.snap->ps.weapon;
+	projSpeed = CG_ProjectileSpeed( weapon, &grav );
+	if ( projSpeed <= 0.0f ) {
+		return;					// hitscan weapon: no lead to show
+	}
+
+	localNum = cg.snap->ps.clientNum;
+
+	for ( i = 0 ; i < cg.snap->numEntities ; i++ ) {
+		es = &cg.snap->entities[i];
+		if ( es->eType != ET_PLAYER || es->number == localNum ) {
+			continue;
+		}
+		if ( es->eFlags & EF_DEAD ) {
+			continue;
+		}
+
+		num  = es->number;
+		cent = &cg_entities[ num ];
+
+		CG_LeadAimPoint( cent, weapon, lead );
+
+		// box around the predicted body (the lead point is body + 20)
+		VectorCopy( lead, feet );	feet[2] -= 44.0f;
+		VectorCopy( lead, head );	head[2] += 12.0f;
+		if ( !CG_WorldToScreen( feet, &fx, &fy ) ) {
+			continue;
+		}
+		if ( !CG_WorldToScreen( head, &hx, &hy ) ) {
+			continue;
+		}
+		boxH = fy - hy;
+		if ( boxH < 3.0f ) {
+			continue;
+		}
+		boxW = boxH * 0.5f;
+		cx   = ( fx + hx ) * 0.5f;
+		boxX = cx - boxW * 0.5f;
+		boxY = hy;
+		CG_DrawRect( boxX, boxY, boxW, boxH, 1.0f, colLead );
+
+		// crosshair marker at the exact aim point
+		if ( CG_WorldToScreen( lead, &lx, &ly ) ) {
+			CG_FillRect( lx - 1.0f, ly - 5.0f, 2.0f, 10.0f, colLead );
+			CG_FillRect( lx - 5.0f, ly - 1.0f, 10.0f, 2.0f, colLead );
+		}
+	}
+}
+
 static void CG_Draw2D( void ) {
 #ifdef MISSIONPACK
 	if (cgs.orderPending && cg.time > cgs.orderTime) {

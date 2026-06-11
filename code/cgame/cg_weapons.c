@@ -598,6 +598,78 @@ static void CG_GrenadeTrail( centity_t *ent, const weaponInfo_t *wi ) {
 
 /*
 =================
+CG_ProjectileSpeed
+
+Launch speed of the weapon's projectile (0 = hitscan / no projectile). Sets
+*gravity when the projectile arcs under gravity (grenade launcher).
+=================
+*/
+float CG_ProjectileSpeed( int weapon, qboolean *gravity ) {
+	*gravity = qfalse;
+	switch ( weapon ) {
+	case WP_ROCKET_LAUNCHER:	return 900.0f;
+	case WP_PLASMAGUN:			return 2000.0f;
+	case WP_BFG:				return 2000.0f;
+	case WP_GRENADE_LAUNCHER:	*gravity = qtrue; return 700.0f;
+	default:					return 0.0f;		// hitscan
+	}
+}
+
+/*
+=================
+CG_LeadAimPoint
+
+World point to aim at to hit 'cent' with 'weapon'. For projectile weapons it
+intercepts the target using its velocity (plus gravity while airborne) and the
+projectile speed; for hitscan it returns the body point. Fills 'out', returns
+the projectile speed (0 = hitscan).
+=================
+*/
+float CG_LeadAimPoint( centity_t *cent, int weapon, vec3_t out ) {
+	float		projSpeed, grav, t;
+	qboolean	projGravity;
+	vec3_t		target, vel, muzzle, predicted, rel;
+	int			i;
+
+	// base point: upper torso / neck
+	VectorCopy( cent->lerpOrigin, target );
+	target[2] += 20.0f;
+
+	projSpeed = CG_ProjectileSpeed( weapon, &projGravity );
+	if ( projSpeed <= 0.0f ) {
+		VectorCopy( target, out );			// hitscan: no lead
+		return 0.0f;
+	}
+
+	VectorCopy( cg.refdef.vieworg, muzzle );				// fire from the eye
+	VectorCopy( cent->currentState.pos.trDelta, vel );		// target velocity
+	grav = ( cent->currentState.groundEntityNum == ENTITYNUM_NONE ) ? (float)DEFAULT_GRAVITY : 0.0f;
+
+	// fixed-point iteration for the interception time
+	VectorSubtract( target, muzzle, rel );
+	t = VectorLength( rel ) / projSpeed;
+	for ( i = 0 ; i < 8 ; i++ ) {
+		VectorMA( target, t, vel, predicted );
+		predicted[2] -= 0.5f * grav * t * t;				// target falls while in the air
+		VectorSubtract( predicted, muzzle, rel );
+		t = VectorLength( rel ) / projSpeed;
+		if ( t > 5.0f ) {
+			t = 5.0f;										// unreachable: cap
+		}
+	}
+
+	VectorMA( target, t, vel, predicted );
+	predicted[2] -= 0.5f * grav * t * t;
+	if ( projGravity ) {
+		predicted[2] += 0.5f * (float)DEFAULT_GRAVITY * t * t;	// compensate the grenade's own drop
+	}
+
+	VectorCopy( predicted, out );
+	return projSpeed;
+}
+
+/*
+=================
 CG_RegisterWeapon
 
 The server says this item is used on this level

@@ -42,7 +42,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 */
 
-// TTimo: initialised the statics, this fixes a crash when entering a compiled VM 
+// TTimo: initialised the statics, this fixes a crash when entering a compiled VM
 static	byte	*buf = NULL;
 static	byte	*jused = NULL;
 static	int		compiledOfs = 0;
@@ -90,7 +90,7 @@ static	int	instruction, pass;
 static	int	lastConst = 0;
 static	int	oc0, oc1, pop0, pop1;
 
-typedef enum 
+typedef enum
 {
 	LAST_COMMAND_NONE	= 0,
 	LAST_COMMAND_MOV_EDI_EAX,
@@ -242,7 +242,7 @@ static int	Constant1( void ) {
 	return v;
 }
 
-static void Emit1( int v ) 
+static void Emit1( int v )
 {
 	buf[ compiledOfs ] = v;
 	compiledOfs++;
@@ -321,13 +321,13 @@ static void EmitCommand(ELastCommand command)
 }
 
 static void EmitAddEDI4(vm_t *vm) {
-	if (LastCommand == LAST_COMMAND_SUB_DI_4 && jused[instruction-1] == 0) 
+	if (LastCommand == LAST_COMMAND_SUB_DI_4 && jused[instruction-1] == 0)
 	{		// sub di,4
 		compiledOfs -= 3;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
 		return;
 	}
-	if (LastCommand == LAST_COMMAND_SUB_DI_8 && jused[instruction-1] == 0) 
+	if (LastCommand == LAST_COMMAND_SUB_DI_8 && jused[instruction-1] == 0)
 	{		// sub di,8
 		compiledOfs -= 3;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
@@ -338,18 +338,18 @@ static void EmitAddEDI4(vm_t *vm) {
 }
 
 static void EmitMovEAXEDI(vm_t *vm) {
-	if (LastCommand == LAST_COMMAND_MOV_EDI_EAX) 
+	if (LastCommand == LAST_COMMAND_MOV_EDI_EAX)
 	{	// mov [edi], eax
 		compiledOfs -= 2;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
 		return;
 	}
 	if (pop1 == OP_DIVI || pop1 == OP_DIVU || pop1 == OP_MULI || pop1 == OP_MULU ||
-		pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1 ) 
-	{	
+		pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1 )
+	{
 		return;
 	}
-	if (pop1 == OP_CONST && buf[compiledOfs-6] == 0xC7 && buf[compiledOfs-5] == 0x07 ) 
+	if (pop1 == OP_CONST && buf[compiledOfs-6] == 0xC7 && buf[compiledOfs-5] == 0x07 )
 	{	// mov edi, 0x123456
 		compiledOfs -= 6;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
@@ -361,7 +361,7 @@ static void EmitMovEAXEDI(vm_t *vm) {
 }
 
 qboolean EmitMovEBXEDI(vm_t *vm, int andit) {
-	if (LastCommand == LAST_COMMAND_MOV_EDI_EAX) 
+	if (LastCommand == LAST_COMMAND_MOV_EDI_EAX)
 	{	// mov [edi], eax
 		compiledOfs -= 2;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
@@ -369,12 +369,12 @@ qboolean EmitMovEBXEDI(vm_t *vm, int andit) {
 		return qfalse;
 	}
 	if (pop1 == OP_DIVI || pop1 == OP_DIVU || pop1 == OP_MULI || pop1 == OP_MULU ||
-		pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1 ) 
-	{	
+		pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1 )
+	{
 		EmitString( "8B D8");		// mov bx, eax
 		return qfalse;
 	}
-	if (pop1 == OP_CONST && buf[compiledOfs-6] == 0xC7 && buf[compiledOfs-5] == 0x07 ) 
+	if (pop1 == OP_CONST && buf[compiledOfs-6] == 0xC7 && buf[compiledOfs-5] == 0x07 )
 	{		// mov edi, 0x123456
 		compiledOfs -= 6;
 		vm->instructionPointers[ instruction-1 ] = compiledOfs;
@@ -407,7 +407,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 	maxLength = header->codeLength * 8;
 	buf = Z_Malloc( maxLength );
 	jused = Z_Malloc(header->instructionCount + 2 );
-	
+
 	Com_Memset(jused, 0, header->instructionCount+2);
 
 	for(pass=0;pass<2;pass++) {
@@ -673,7 +673,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			EmitCommand(LAST_COMMAND_MOV_EDI_EAX);		// mov dword ptr [edi], eax
 			break;
 		case OP_STORE4:
-			EmitMovEAXEDI(vm);	
+			EmitMovEAXEDI(vm);
 			EmitString( "8B 5F FC" );	// mov	ebx, dword ptr [edi-4]
 //			if (pop1 != OP_CALL) {
 //				EmitString( "81 E3" );		// and ebx, 0x12345678
@@ -684,7 +684,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			break;
 		case OP_STORE2:
-			EmitMovEAXEDI(vm);	
+			EmitMovEAXEDI(vm);
 			EmitString( "8B 5F FC" );	// mov	ebx, dword ptr [edi-4]
 //			EmitString( "81 E3" );		// and ebx, 0x12345678
 //			Emit4( vm->dataMask & ~1 );
@@ -693,7 +693,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			break;
 		case OP_STORE1:
-			EmitMovEAXEDI(vm);	
+			EmitMovEAXEDI(vm);
 			EmitString( "8B 5F FC" );	// mov	ebx, dword ptr [edi-4]
 //			EmitString( "81 E3" );		// and ebx, 0x12345678
 //			Emit4( vm->dataMask );
@@ -813,7 +813,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_NEF:
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			EmitString( "D9 47 04" );	// fld dword ptr [edi+4]
@@ -825,7 +825,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_LTF:
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			EmitString( "D9 47 04" );	// fld dword ptr [edi+4]
@@ -837,7 +837,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_LEF:
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			EmitString( "D9 47 04" );	// fld dword ptr [edi+4]
@@ -849,7 +849,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_GTF:
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			EmitString( "D9 47 04" );	// fld dword ptr [edi+4]
@@ -861,7 +861,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_GEF:
 			EmitCommand(LAST_COMMAND_SUB_DI_8);		// sub edi, 8
 			EmitString( "D9 47 04" );	// fld dword ptr [edi+4]
@@ -873,7 +873,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			v = Constant4();
 			jused[v] = 1;
 			Emit4( (int)vm->instructionPointers + v*4 );
-			break;			
+			break;
 		case OP_NEGI:
 			EmitString( "F7 1F" );		// neg dword ptr [edi]
 			break;
@@ -1019,8 +1019,8 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 			// FIXME: range check
 			EmitString( "56" );			// push esi
 			EmitString( "57" );			// push edi
-			EmitString( "8B 37" );		// mov esi,[edi] 
-			EmitString( "8B 7F FC" );	// mov edi,[edi-4] 
+			EmitString( "8B 37" );		// mov esi,[edi]
+			EmitString( "8B 7F FC" );	// mov edi,[edi-4]
 			EmitString( "B9" );			// mov ecx,0x12345678
 			Emit4( Constant4() >> 2 );
 			EmitString( "B8" );			// mov eax, datamask
@@ -1074,7 +1074,7 @@ void VM_Compile( vm_t *vm, vmHeader_t *header ) {
 
 		addr = ((int)vm->codeBase & ~(psize-1)) - psize;
 
-		r = mprotect((char*)addr, vm->codeLength + (int)vm->codeBase - addr + psize, 
+		r = mprotect((char*)addr, vm->codeLength + (int)vm->codeBase - addr + psize,
 			PROT_READ | PROT_WRITE | PROT_EXEC );
 
 		if (r < 0)
@@ -1116,7 +1116,7 @@ int	VM_CallCompiled( vm_t *vm, int *args ) {
 	programStack = vm->programStack;
 	stackOnEntry = programStack;
 
-	// set up the stack frame 
+	// set up the stack frame
 	image = vm->dataBase;
 
 	programCounter = 0;
@@ -1157,9 +1157,9 @@ int	VM_CallCompiled( vm_t *vm, int *args ) {
 		static void *memEntryPoint;
 
 		memProgramStack	= programStack;
-		memOpStack      = opStack;     
-		memEntryPoint   = entryPoint;  
-		
+		memOpStack      = opStack;
+		memEntryPoint   = entryPoint;
+
 		__asm__("	pushal				\r\n" \
 				"	movl %0,%%esi		\r\n" \
 				"	movl %1,%%edi		\r\n" \

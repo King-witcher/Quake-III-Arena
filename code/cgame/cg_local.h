@@ -1356,6 +1356,8 @@ void CG_Weapon_f( void );
 
 void CG_RegisterWeapon( int weaponNum );
 void CG_RegisterItemVisuals( int itemNum );
+float CG_ProjectileSpeed( int weapon, qboolean *gravity );
+float CG_LeadAimPoint( centity_t *cent, int weapon, vec3_t out );
 
 void CG_FireWeapon( centity_t *cent );
 void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, impactSound_t soundType );

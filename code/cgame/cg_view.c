@@ -809,7 +809,7 @@ onto them while held.
 */
 static void CG_UpdateAimbot( void ) {
 	int				i, num, localNum, localTeam;
-	centity_t		*cent;
+	centity_t		*cent, *bestCent;
 	entityState_t	*es;
 	clientInfo_t	*ci;
 	vec3_t			eye, fwd, right, up, aimPoint, dir, bestDir, angles;
@@ -831,6 +831,7 @@ static void CG_UpdateAimbot( void ) {
 	AngleVectors( cg.refdefViewAngles, fwd, right, up );
 
 	haveBest = qfalse;
+	bestCent = NULL;
 	bestDot  = -2.0f;
 
 	aimRange = cg_aimbotRange.value;							// 0 = unlimited
@@ -883,7 +884,7 @@ static void CG_UpdateAimbot( void ) {
 		if ( !haveBest || dot > bestDot ) {
 			haveBest = qtrue;
 			bestDot  = dot;
-			VectorCopy( dir, bestDir );
+			bestCent = cent;
 		}
 	}
 
@@ -891,6 +892,10 @@ static void CG_UpdateAimbot( void ) {
 		CG_AimbotPublish( qfalse, 0.0f, 0.0f );
 		return;
 	}
+
+	// lead the target: aim where the projectile will intercept it (body for hitscan)
+	CG_LeadAimPoint( bestCent, cg.snap->ps.weapon, aimPoint );
+	VectorSubtract( aimPoint, eye, bestDir );
 
 	vectoangles( bestDir, angles );
 
