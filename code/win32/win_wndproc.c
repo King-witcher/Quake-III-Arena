@@ -115,7 +115,13 @@ static void VID_AppActivate(BOOL fActive, BOOL minimize)
 
 //==========================================================================
 
-static byte s_scantokey[128] = 
+// When the console-toggle key is pressed, Windows still generates a WM_CHAR
+// for whatever character that physical key produces on the current keyboard
+// layout (e.g. '\'' on the Brazilian ABNT2 layout). Swallow that one char so
+// it does not get typed into the freshly-opened console field.
+static qboolean s_swallowNextChar = qfalse;
+
+static byte s_scantokey[128] =
 					{ 
 //  0           1       2       3       4       5       6       7 
 //  8           9       A       B       C       D       E       F 
@@ -438,7 +444,15 @@ LONG WINAPI MainWndProc (
 		}
 		// fall through
 	case WM_KEYDOWN:
-		Sys_QueEvent( g_wv.sysMsgTime, SE_KEY, MapKey( lParam ), qtrue, 0, NULL );
+		{
+			int mappedKey = MapKey( lParam );
+			// the console-toggle key also emits a WM_CHAR for the character it
+			// produces on the current layout; flag it so it is not typed into
+			// the console. Reset on every keydown so a layout where the key has
+			// no WM_CHAR (dead key) never swallows a later, unrelated char.
+			s_swallowNextChar = ( mappedKey == '`' || mappedKey == '~' );
+			Sys_QueEvent( g_wv.sysMsgTime, SE_KEY, mappedKey, qtrue, 0, NULL );
+		}
 		break;
 
 	case WM_SYSKEYUP:
@@ -447,6 +461,10 @@ LONG WINAPI MainWndProc (
 		break;
 
 	case WM_CHAR:
+		if ( s_swallowNextChar ) {
+			s_swallowNextChar = qfalse;
+			break;
+		}
 		Sys_QueEvent( g_wv.sysMsgTime, SE_CHAR, wParam, 0, 0, NULL );
 		break;
    }

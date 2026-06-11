@@ -35,7 +35,10 @@
                 "+set", "developer", "1",
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
-                "+set", "vm_ui", "0"
+                "+set", "vm_ui", "0",
+                "+devmap", "q3dm17",
+                "+wait", "10",
+                "+give", "all"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -54,7 +57,10 @@
                 "+set", "com_blindlyLoadDLLs", "1",
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
-                "+set", "vm_ui", "0"
+                "+set", "vm_ui", "0",
+                "+devmap", "q3dm17",
+                "+wait", "10",
+                "+give", "all"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -73,7 +79,10 @@
                 "+set", "developer", "1",
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
-                "+set", "vm_ui", "1"
+                "+set", "vm_ui", "1",
+                "+devmap", "q3dm17",
+                "+wait", "10",
+                "+give", "all"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -91,7 +100,10 @@
                 "+set", "sv_pure", "0",
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
-                "+set", "vm_ui", "1"
+                "+set", "vm_ui", "1",
+                "+devmap", "q3dm17",
+                "+wait", "10",
+                "+give", "all"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
