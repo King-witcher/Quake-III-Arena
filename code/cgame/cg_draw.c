@@ -2557,6 +2557,9 @@ static void CG_Draw2D( void ) {
 		}
 	}
 
+	// floating damage numbers (2D bigchars / proportional font styles)
+	CG_DrawDamagePlums();
+
 	CG_DrawVote();
 	CG_DrawTeamVote();
 

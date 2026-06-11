@@ -163,6 +163,8 @@ vmCvar_t	cg_noVoiceChats;
 vmCvar_t	cg_noVoiceText;
 vmCvar_t	cg_hudFiles;
 vmCvar_t 	cg_scorePlum;
+vmCvar_t 	cg_damageNumbers;
+vmCvar_t 	cg_damageNumbersFont;
 vmCvar_t 	cg_smoothClients;
 vmCvar_t	pmove_fixed;
 //vmCvar_t	cg_pmove_fixed;
@@ -316,7 +318,9 @@ static cvarTable_t cvarTable[] = { // bk001129
 	{ &cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
 	{ &cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
 	{ &cg_trueLightning, "cg_trueLightning", "0.0", CVAR_ARCHIVE},
-	{ &cg_lightningStyle, "cg_lightningStyle", "0", CVAR_ARCHIVE}
+	{ &cg_lightningStyle, "cg_lightningStyle", "0", CVAR_ARCHIVE},
+	{ &cg_damageNumbers, "cg_damageNumbers", "0", CVAR_ARCHIVE},
+	{ &cg_damageNumbersFont, "cg_damageNumbersFont", "0", CVAR_ARCHIVE}
 //	{ &cg_pmove_fixed, "cg_pmove_fixed", "0", CVAR_USERINFO | CVAR_ARCHIVE }
 };
 

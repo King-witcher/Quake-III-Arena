@@ -1163,6 +1163,23 @@ void ClientEndFrame( gentity_t *ent ) {
 	// apply all the damage taken this frame
 	P_DamageFeedback (ent);
 
+	// flush the floating damage number for damage dealt to this client this
+	// frame, sending it to the attacker (works even on the killing blow, as
+	// ClientEndFrame still runs for a player that died this frame)
+	if ( ent->client->damagePlum > 0 ) {
+		int			an = ent->client->damagePlumAttacker;
+		gentity_t	*att;
+
+		if ( an >= 0 && an < level.maxclients ) {
+			att = &g_entities[ an ];
+			if ( att->inuse && att->client
+				&& att->client->pers.connected == CON_CONNECTED ) {
+				DamagePlum( att, ent->r.currentOrigin, ent->client->damagePlum );
+			}
+		}
+		ent->client->damagePlum = 0;
+	}
+
 	// add the EF_CONNECTION flag if we haven't gotten commands recently
 	if ( level.time - ent->client->lastCmdTime > 1000 ) {
 		ent->s.eFlags |= EF_CONNECTION;

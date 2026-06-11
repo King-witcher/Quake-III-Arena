@@ -44,6 +44,25 @@ void ScorePlum( gentity_t *ent, vec3_t origin, int score ) {
 
 /*
 ============
+DamagePlum
+
+Sends a floating damage number to the attacker only, at the victim's origin.
+============
+*/
+void DamagePlum( gentity_t *attacker, vec3_t origin, int damage ) {
+	gentity_t *plum;
+
+	plum = G_TempEntity( origin, EV_DAMAGEPLUM );
+	// only send this temp entity to the attacking client
+	plum->r.svFlags |= SVF_SINGLECLIENT;
+	plum->r.singleClient = attacker->s.number;
+	//
+	plum->s.otherEntityNum = attacker->s.number;
+	plum->s.time = damage;
+}
+
+/*
+============
 AddScore
 
 Adds score to both the client and his team
@@ -1000,6 +1019,13 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// save some from armor
 	asave = CheckArmor (targ, take, dflags);
 	take -= asave;
+
+	// accumulate the damage dealt to a player so the attacker can be shown a
+	// floating damage number; summed this frame and flushed in ClientEndFrame
+	if ( attacker->client && attacker != targ && targ->client ) {
+		targ->client->damagePlum += take + asave;
+		targ->client->damagePlumAttacker = attacker->s.number;
+	}
 
 	if ( g_debugDamage.integer ) {
 		G_Printf( "%i: client:%i health:%i damage:%i armor:%i\n", level.time, targ->s.number,

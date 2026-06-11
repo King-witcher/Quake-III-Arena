@@ -132,7 +132,7 @@ void CG_BloodTrail( localEntity_t *le ) {
 	for ( ; t <= t2; t += step ) {
 		BG_EvaluateTrajectory( &le->pos, t, newOrigin );
 
-		blood = CG_SmokePuff( newOrigin, vec3_origin, 
+		blood = CG_SmokePuff( newOrigin, vec3_origin,
 					  20,		// radius
 					  1, 1, 1, 1,	// color
 					  2000,		// trailTime
@@ -228,8 +228,8 @@ void CG_ReflectVelocity( localEntity_t *le, trace_t *trace ) {
 
 
 	// check for stop, making sure that even on low FPS systems it doesn't bobble
-	if ( trace->allsolid || 
-		( trace->plane.normal[2] > 0 && 
+	if ( trace->allsolid ||
+		( trace->plane.normal[2] > 0 &&
 		( le->pos.trDelta[2] < 40 || le->pos.trDelta[2] < -cg.frametime * le->pos.trDelta[2] ) ) ) {
 		le->pos.trType = TR_STATIONARY;
 	} else {
@@ -250,7 +250,7 @@ void CG_AddFragment( localEntity_t *le ) {
 		// sink into the ground if near the removal time
 		int		t;
 		float	oldZ;
-		
+
 		t = le->endTime - cg.time;
 		if ( t < SINK_TIME ) {
 			// we must use an explicit lighting origin, otherwise the
@@ -798,6 +798,190 @@ void CG_AddScorePlum( localEntity_t *le ) {
 }
 
 
+/*
+===================
+CG_WorldToScreen
+
+Projects a world point into 640x480 virtual screen coordinates. Returns qfalse
+if the point is behind the view. The 2D draw routines apply their own 640->real
+resolution scaling, so projecting to the virtual space is correct on any aspect.
+===================
+*/
+static qboolean CG_WorldToScreen( vec3_t point, float *x, float *y ) {
+	vec3_t	trans;
+	float	z;
+	float	px, py;
+
+	VectorSubtract( point, cg.refdef.vieworg, trans );
+
+	z = DotProduct( trans, cg.refdef.viewaxis[0] );
+	if ( z < 1 ) {
+		return qfalse;		// behind the viewer
+	}
+
+	px = tan( cg.refdef.fov_x * ( M_PI / 360.0f ) );
+	py = tan( cg.refdef.fov_y * ( M_PI / 360.0f ) );
+	if ( px == 0 || py == 0 ) {
+		return qfalse;
+	}
+
+	*x = 320.0f - DotProduct( trans, cg.refdef.viewaxis[1] ) * 320.0f / ( z * px );
+	*y = 240.0f - DotProduct( trans, cg.refdef.viewaxis[2] ) * 240.0f / ( z * py );
+	return qtrue;
+}
+
+/*
+===================
+CG_DamagePlumPosition
+
+Computes the current world origin (rising over its life) and the fade alpha for
+a damage number, shared by the 3D-sprite and 2D-text renderers.
+===================
+*/
+static void CG_DamagePlumPosition( localEntity_t *le, vec3_t origin, float *alpha ) {
+	float	c;
+
+	c = ( le->endTime - cg.time ) * le->lifeRate;	// 1 at spawn -> 0 at death
+
+	VectorCopy( le->pos.trBase, origin );
+	// float upward at ~150 u/s so rapid hits (e.g. a lightning gun stream)
+	// spread out vertically into separate, readable numbers
+	origin[2] += ( cg.time - le->startTime ) * 0.15f;
+
+	if ( c < 0.35f ) {
+		*alpha = c / 0.35f;							// fade out near the end
+	} else {
+		*alpha = 1.0f;
+	}
+}
+
+/*
+===================
+CG_AddDamagePlum
+
+Renders a damage number as 3D number sprites (cg_damageNumbersFont 0) - the same
+font used by the score/death plum. The 2D font styles are drawn later in
+CG_DrawDamagePlums during the 2D pass.
+===================
+*/
+void CG_AddDamagePlum( localEntity_t *le ) {
+	refEntity_t	*re;
+	vec3_t		origin, delta, dir, vec, up = {0, 0, 1};
+	float		len, alpha;
+	int			i, value, digits[10], numdigits;
+
+	if ( !cg_damageNumbers.integer || cg_damageNumbersFont.integer != 0 ) {
+		return;
+	}
+
+	re = &le->refEntity;
+
+	CG_DamagePlumPosition( le, origin, &alpha );
+
+	re->shaderRGBA[0] = 0xff * le->color[0];
+	re->shaderRGBA[1] = 0xff * le->color[1];
+	re->shaderRGBA[2] = 0xff * le->color[2];
+	re->shaderRGBA[3] = 0xff * alpha;
+
+	re->radius = NUMBER_SIZE / 2;
+
+	// face the viewer
+	VectorSubtract( cg.refdef.vieworg, origin, dir );
+	CrossProduct( dir, up, vec );
+	VectorNormalize( vec );
+
+	// if the view would be "inside" the sprite, skip it this frame
+	VectorSubtract( origin, cg.refdef.vieworg, delta );
+	len = VectorLength( delta );
+	if ( len < 20 ) {
+		return;
+	}
+
+	value = le->radius;
+	for ( numdigits = 0; !( numdigits && !value ); numdigits++ ) {
+		digits[numdigits] = value % 10;
+		value = value / 10;
+	}
+
+	for ( i = 0; i < numdigits; i++ ) {
+		VectorMA( origin, (float) ( ( (float) numdigits / 2 ) - i ) * NUMBER_SIZE, vec, re->origin );
+		re->customShader = cgs.media.numberShaders[ digits[ numdigits - 1 - i ] ];
+		trap_R_AddRefEntityToScene( re );
+	}
+}
+
+/*
+===================
+CG_DrawDamagePlums
+
+Draws the active damage numbers as 2D text (cg_damageNumbersFont 1), projecting
+each number's world position onto the screen. Called during the 2D pass so the
+text draws on top of the rendered world. The sprite style is handled in
+CG_AddDamagePlum instead.
+===================
+*/
+
+// base (100%) damage-number text size: half a bigchar. CG_DrawDamagePlums then
+// scales this per number by the amount of damage dealt.
+#define DAMAGEPLUM_CHAR_WIDTH	( BIGCHAR_WIDTH / 2 )
+#define DAMAGEPLUM_CHAR_HEIGHT	( BIGCHAR_HEIGHT / 2 )
+
+void CG_DrawDamagePlums( void ) {
+	localEntity_t	*le, *next;
+	vec3_t			origin;
+	float			alpha, x, y, scale;
+	vec4_t			color;
+	char			num[16];
+	int				w, dmg, cw, ch;
+
+	if ( !cg_damageNumbers.integer ) {
+		return;
+	}
+	if ( cg_damageNumbersFont.integer == 0 ) {
+		return;		// sprite font is added to the 3D scene in CG_AddDamagePlum
+	}
+
+	le = cg_activeLocalEntities.next;
+	for ( ; le != &cg_activeLocalEntities; le = next ) {
+		next = le->next;
+
+		if ( le->leType != LE_DAMAGEPLUM ) {
+			continue;
+		}
+
+		CG_DamagePlumPosition( le, origin, &alpha );
+
+		if ( !CG_WorldToScreen( origin, &x, &y ) ) {
+			continue;
+		}
+
+		color[0] = le->color[0];
+		color[1] = le->color[1];
+		color[2] = le->color[2];
+		color[3] = alpha;
+
+		dmg = (int) le->radius;
+
+		// scale the text by damage
+		scale = ( 60 + dmg ) / 80.0f;
+		cw = (int) ( DAMAGEPLUM_CHAR_WIDTH * scale );
+		ch = (int) ( DAMAGEPLUM_CHAR_HEIGHT * scale );
+		if ( cw < 1 ) {
+			cw = 1;
+		}
+		if ( ch < 1 ) {
+			ch = 1;
+		}
+
+		Com_sprintf( num, sizeof( num ), "%i", dmg );
+
+		w = CG_DrawStrlen( num ) * cw;
+		CG_DrawStringExt( (int) x - w / 2, (int) y - ( ch / 2 ),
+			num, color, qtrue, qfalse, cw, ch, 0 );
+	}
+}
+
+
 
 
 //==============================================================================
@@ -861,6 +1045,10 @@ void CG_AddLocalEntities( void ) {
 
 		case LE_SCOREPLUM:
 			CG_AddScorePlum( le );
+			break;
+
+		case LE_DAMAGEPLUM:
+			CG_AddDamagePlum( le );
 			break;
 
 #ifdef MISSIONPACK

@@ -96,7 +96,7 @@ CG_SmokePuff
 Adds a smoke puff or blood trail localEntity.
 =====================
 */
-localEntity_t *CG_SmokePuff( const vec3_t p, const vec3_t vel, 
+localEntity_t *CG_SmokePuff( const vec3_t p, const vec3_t vel,
 				   float radius,
 				   float r, float g, float b, float a,
 				   float duration,
@@ -129,7 +129,7 @@ localEntity_t *CG_SmokePuff( const vec3_t p, const vec3_t vel,
 		le->lifeRate = 1.0 / ( le->endTime - le->startTime );
 	}
 	le->color[0] = r;
-	le->color[1] = g; 
+	le->color[1] = g;
 	le->color[2] = b;
 	le->color[3] = a;
 
@@ -402,10 +402,10 @@ void CG_ScorePlum( int client, vec3_t org, int score ) {
 	le->endTime = cg.time + 4000;
 	le->lifeRate = 1.0 / ( le->endTime - le->startTime );
 
-	
+
 	le->color[0] = le->color[1] = le->color[2] = le->color[3] = 1.0;
 	le->radius = score;
-	
+
 	VectorCopy( org, le->pos.trBase );
 	if (org[2] >= lastPos[2] - 20 && org[2] <= lastPos[2] + 20) {
 		le->pos.trBase[2] -= 20;
@@ -426,11 +426,73 @@ void CG_ScorePlum( int client, vec3_t org, int score ) {
 
 
 /*
+==================
+CG_DamagePlum
+
+Spawns a floating damage number at the victim's origin. The server only sends
+this event to the attacker, so it is shown to whoever dealt the damage. The
+number's color is chosen by the amount of damage dealt.
+==================
+*/
+void CG_DamagePlum( int client, vec3_t org, int damage ) {
+	localEntity_t	*le;
+	refEntity_t		*re;
+	vec3_t			angles;
+
+	if ( !cg_damageNumbers.integer ) {
+		return;
+	}
+	// only visualize for the local client (the attacker the server sent this to)
+	if ( client != cg.predictedPlayerState.clientNum ) {
+		return;
+	}
+	if ( damage <= 0 ) {
+		return;
+	}
+
+	le = CG_AllocLocalEntity();
+	le->leFlags = 0;
+	le->leType = LE_DAMAGEPLUM;
+	le->startTime = cg.time;
+	le->endTime = cg.time + 1200;
+	le->lifeRate = 1.0 / ( le->endTime - le->startTime );
+
+	// store the damage and pick a color by magnitude
+	le->radius = damage;
+	le->color[0] = 1.0f;
+	if ( damage >= 75 ) {			// red
+		le->color[1] = 0.0f;
+		le->color[2] = 0.0f;
+	} else if ( damage >= 50 ) {	// orange
+		le->color[1] = 0.5f;
+		le->color[2] = 0.0f;
+	} else if ( damage >= 25 ) {	// yellow
+		le->color[1] = 1.0f;
+		le->color[2] = 0.0f;
+	} else {						// white
+		le->color[1] = 1.0f;
+		le->color[2] = 1.0f;
+	}
+	le->color[3] = 1.0f;
+
+	VectorCopy( org, le->pos.trBase );
+	le->pos.trBase[2] += 32;		// rise from around the torso/head
+
+	re = &le->refEntity;
+	re->reType = RT_SPRITE;
+	re->radius = 8;
+
+	VectorClear( angles );
+	AnglesToAxis( angles, re->axis );
+}
+
+
+/*
 ====================
 CG_MakeExplosion
 ====================
 */
-localEntity_t *CG_MakeExplosion( vec3_t origin, vec3_t dir, 
+localEntity_t *CG_MakeExplosion( vec3_t origin, vec3_t dir,
 								qhandle_t hModel, qhandle_t shader,
 								int msec, qboolean isSprite ) {
 	float			ang;
@@ -505,7 +567,7 @@ void CG_Bleed( vec3_t origin, int entityNum ) {
 
 	ex->startTime = cg.time;
 	ex->endTime = ex->startTime + 500;
-	
+
 	VectorCopy ( origin, ex->refEntity.origin);
 	ex->refEntity.reType = RT_SPRITE;
 	ex->refEntity.rotation = rand() % 360;

@@ -51,7 +51,9 @@ GAME OPTIONS MENU
 #define ID_DRAWTEAMOVERLAY		136
 #define ID_ALLOWDOWNLOAD			137
 #define ID_LIGHTNINGSTYLE		138
-#define ID_BACK					139
+#define ID_DAMAGENUMBERS		139
+#define ID_DAMAGENUMBERSFONT	140
+#define ID_BACK					141
 
 #define	NUM_CROSSHAIRS			10
 
@@ -75,6 +77,8 @@ typedef struct {
 	menulist_s			drawteamoverlay;
 	menuradiobutton_s	allowdownload;
 	menulist_s			lightningstyle;
+	menuradiobutton_s	damagenumbers;
+	menulist_s			damagenumbersfont;
 	menubitmap_s		back;
 
 	qhandle_t			crosshairShader[NUM_CROSSHAIRS];
@@ -99,6 +103,13 @@ static const char *lightningstyle_names[] =
 	0
 };
 
+static const char *damagenumbersfont_names[] =
+{
+	"sprite",
+	"text",
+	0
+};
+
 static void Preferences_SetMenuItems( void ) {
 	s_preferences.crosshair.curvalue		= (int)trap_Cvar_VariableValue( "cg_drawCrosshair" ) % NUM_CROSSHAIRS;
 	s_preferences.simpleitems.curvalue		= trap_Cvar_VariableValue( "cg_simpleItems" ) != 0;
@@ -112,6 +123,8 @@ static void Preferences_SetMenuItems( void ) {
 	s_preferences.drawteamoverlay.curvalue	= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "cg_drawTeamOverlay" ) );
 	s_preferences.allowdownload.curvalue	= trap_Cvar_VariableValue( "cl_allowDownload" ) != 0;
 	s_preferences.lightningstyle.curvalue	= Com_Clamp( 0, 2, trap_Cvar_VariableValue( "cg_lightningStyle" ) );
+	s_preferences.damagenumbers.curvalue	= trap_Cvar_VariableValue( "cg_damageNumbers" ) != 0;
+	s_preferences.damagenumbersfont.curvalue = Com_Clamp( 0, 1, trap_Cvar_VariableValue( "cg_damageNumbersFont" ) );
 }
 
 
@@ -175,6 +188,14 @@ static void Preferences_Event( void* ptr, int notification ) {
 
 	case ID_LIGHTNINGSTYLE:
 		trap_Cvar_SetValue( "cg_lightningStyle", s_preferences.lightningstyle.curvalue );
+		break;
+
+	case ID_DAMAGENUMBERS:
+		trap_Cvar_SetValue( "cg_damageNumbers", s_preferences.damagenumbers.curvalue );
+		break;
+
+	case ID_DAMAGENUMBERSFONT:
+		trap_Cvar_SetValue( "cg_damageNumbersFont", s_preferences.damagenumbersfont.curvalue );
 		break;
 
 	case ID_BACK:
@@ -382,6 +403,25 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.lightningstyle.itemnames		  = lightningstyle_names;
 
 	y += BIGCHAR_HEIGHT+2;
+	s_preferences.damagenumbers.generic.type      = MTYPE_RADIOBUTTON;
+	s_preferences.damagenumbers.generic.name	  = "Damage Numbers:";
+	s_preferences.damagenumbers.generic.flags	  = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.damagenumbers.generic.callback  = Preferences_Event;
+	s_preferences.damagenumbers.generic.id        = ID_DAMAGENUMBERS;
+	s_preferences.damagenumbers.generic.x	      = PREFERENCES_X_POS;
+	s_preferences.damagenumbers.generic.y	      = y;
+
+	y += BIGCHAR_HEIGHT+2;
+	s_preferences.damagenumbersfont.generic.type     = MTYPE_SPINCONTROL;
+	s_preferences.damagenumbersfont.generic.name	 = "Damage Number Font:";
+	s_preferences.damagenumbersfont.generic.flags	 = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.damagenumbersfont.generic.callback = Preferences_Event;
+	s_preferences.damagenumbersfont.generic.id       = ID_DAMAGENUMBERSFONT;
+	s_preferences.damagenumbersfont.generic.x	     = PREFERENCES_X_POS;
+	s_preferences.damagenumbersfont.generic.y	     = y;
+	s_preferences.damagenumbersfont.itemnames		 = damagenumbersfont_names;
+
+	y += BIGCHAR_HEIGHT+2;
 	s_preferences.back.generic.type	    = MTYPE_BITMAP;
 	s_preferences.back.generic.name     = ART_BACK0;
 	s_preferences.back.generic.flags    = QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
@@ -409,6 +449,8 @@ static void Preferences_MenuInit( void ) {
 	Menu_AddItem( &s_preferences.menu, &s_preferences.drawteamoverlay );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.allowdownload );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.lightningstyle );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.damagenumbers );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.damagenumbersfont );
 
 	Menu_AddItem( &s_preferences.menu, &s_preferences.back );
 

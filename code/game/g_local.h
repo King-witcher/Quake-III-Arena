@@ -286,6 +286,11 @@ struct gclient_s {
 	vec3_t		damage_from;		// origin for vector calculation
 	qboolean	damage_fromWorld;	// if true, don't use the damage_from vector
 
+	// floating damage numbers: summed over a frame so a shotgun blast
+	// produces a single number, flushed to the attacker in ClientEndFrame
+	int			damagePlum;			// total damage dealt to this client this frame
+	int			damagePlumAttacker;	// client number that dealt it
+
 	int			accurateCount;		// for "impressive" reward sound
 
 	int			accuracy_shots;		// total number of shots
@@ -582,6 +587,7 @@ void InitBodyQue (void);
 void ClientSpawn( gentity_t *ent );
 void player_die (gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod);
 void AddScore( gentity_t *ent, vec3_t origin, int score );
+void DamagePlum( gentity_t *attacker, vec3_t origin, int damage );
 void CalculateRanks( void );
 qboolean SpotWouldTelefrag( gentity_t *spot );
 
