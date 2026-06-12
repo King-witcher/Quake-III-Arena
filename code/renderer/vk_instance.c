@@ -608,6 +608,17 @@ Returns qfalse on any failure -- the caller falls back to OpenGL.
 ================
 */
 qboolean VK_Init( void ) {
+	// A vid_restart with destroyWindow == qfalse (e.g. the renderer refresh on map
+	// load) leaves VK_Shutdown a no-op, so the device/swapchain are still alive.
+	// Reuse them instead of building a SECOND device on top of the first -- exactly
+	// like the GL backend reuses its context when glConfig.vidWidth != 0.  Creating
+	// a second device/swapchain leaks the first AND breaks injected overlays
+	// (MSI Afterburner/RTSS) which then submit across two devices -> DEVICE_LOST.
+	if ( vk.initialized ) {
+		ri.Printf( PRINT_ALL, "...Vulkan subsystem already up, reusing device\n" );
+		return qtrue;
+	}
+
 	ri.Printf( PRINT_ALL, "Initializing Vulkan subsystem\n" );
 
 	memset( &vk, 0, sizeof( vk ) );

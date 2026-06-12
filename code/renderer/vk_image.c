@@ -173,7 +173,10 @@ qboolean VK_InitImageSystem( void ) {
 
 	VK_CHECK( qvkCreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.descriptorPool ) );
 
-	s_numSamplers = 0;
+	// NOTE: do not reset the sampler cache here -- VK_DeleteImages recreates the
+	// descriptor pool (per map change) through this function, and the samplers are
+	// independent of it.  Resetting the count would orphan the live VkSamplers.
+	// The cache is cleared only by VK_DestroySamplers on full shutdown.
 	return qtrue;
 }
 
