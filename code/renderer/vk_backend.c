@@ -165,6 +165,7 @@ void VK_BeginFrame( void ) {
 	viewport.height = -(float)vk.extent.height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
+	vk.draw.viewport = viewport;
 	qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
 
 	scissor.offset.x = 0;
@@ -274,6 +275,7 @@ void VK_Set2D( void ) {
 
 	vk.draw.stateBits = GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	vk.draw.cullType = CT_TWO_SIDED;
+	vk.draw.clipPlane[0] = vk.draw.clipPlane[1] = vk.draw.clipPlane[2] = vk.draw.clipPlane[3] = 0.0f;	// 2D never clips
 
 	if ( vk.frameStarted ) {
 		memset( &viewport, 0, sizeof( viewport ) );
@@ -283,6 +285,7 @@ void VK_Set2D( void ) {
 		viewport.height = -h;
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
+		vk.draw.viewport = viewport;
 		qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
 
 		scissor.offset.x = 0;
@@ -341,6 +344,7 @@ void VK_SetViewport( void ) {
 	vp.height = -(float)h;
 	vp.minDepth = 0.0f;
 	vp.maxDepth = 1.0f;
+	vk.draw.viewport = vp;			// remembered so qglDepthRange can re-emit it
 	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
 
 	sc.offset.x = x;
@@ -439,6 +443,18 @@ void VK_Cull( int cullType ) {
 
 void VK_TexEnv( int env ) {
 	vk.draw.multitexEnv = env;
+}
+
+// portal/mirror world-space clip plane fed to gl_ClipDistance (NULL disables)
+void VK_SetClipPlane( const float *plane ) {
+	if ( plane ) {
+		vk.draw.clipPlane[0] = plane[0];
+		vk.draw.clipPlane[1] = plane[1];
+		vk.draw.clipPlane[2] = plane[2];
+		vk.draw.clipPlane[3] = plane[3];
+	} else {
+		vk.draw.clipPlane[0] = vk.draw.clipPlane[1] = vk.draw.clipPlane[2] = vk.draw.clipPlane[3] = 0.0f;
+	}
 }
 
 // GL texenv mode -> multi.frag combine spec constant (0 MODULATE, 1 ADD, 2 REPLACE)
@@ -559,6 +575,7 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
 
 	qvkCmdPushConstants( vk.cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 16 * sizeof( float ), vk.draw.mvp );
+	qvkCmdPushConstants( vk.cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 16 * sizeof( float ), 4 * sizeof( float ), vk.draw.clipPlane );
 
 	// bind textures (TMU0 always; TMU1 for the multitexture pipeline)
 	if ( vk.draw.image[0] && vk.draw.image[0]->vkData ) {

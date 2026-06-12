@@ -169,6 +169,8 @@ typedef struct {
 		const void	*xyzPtr;	int xyzStride;
 		const void	*colorPtr;	int colorStride;
 		const void	*tcPtr[2];	int tcStride[2];
+		VkViewport	viewport;			// current viewport (re-emitted by qglDepthRange)
+		float		clipPlane[4];		// portal clip plane (world space); 0 = no clipping
 	} draw;
 } vk_t;
 

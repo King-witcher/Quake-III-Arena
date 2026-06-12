@@ -547,9 +547,21 @@ void RB_BeginDrawingView (void) {
 	// we will only draw a sun if there was sky rendered in this view
 	backEnd.skyRenderedThisView = qfalse;
 
-	// clip to the plane of the portal (OpenGL clip plane; the Vulkan portal clip
-	// path via gl_ClipDistance arrives in Phase 7)
-	if ( r_currentApi == RENDER_API_OPENGL ) {
+	// clip to the plane of the portal.  Vulkan feeds a world-space plane to
+	// gl_ClipDistance (VK_SetClipPlane); OpenGL uses GL_CLIP_PLANE0.
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		if ( backEnd.viewParms.isPortal ) {
+			float	plane[4];
+			plane[0] = backEnd.viewParms.portalPlane.normal[0];
+			plane[1] = backEnd.viewParms.portalPlane.normal[1];
+			plane[2] = backEnd.viewParms.portalPlane.normal[2];
+			plane[3] = -backEnd.viewParms.portalPlane.dist;
+			VK_SetClipPlane( plane );
+		} else {
+			VK_SetClipPlane( NULL );
+		}
+	}
+	else if ( r_currentApi == RENDER_API_OPENGL ) {
 		if ( backEnd.viewParms.isPortal ) {
 			float	plane[4];
 			double	plane2[4];

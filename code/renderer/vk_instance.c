@@ -471,6 +471,7 @@ static qboolean VK_CreateDevice( void ) {
 	memset( &enabledFeatures, 0, sizeof( enabledFeatures ) );
 	enabledFeatures.fillModeNonSolid = vk.devFeatures.fillModeNonSolid;	// r_showtris / GLS_POLYMODE_LINE
 	enabledFeatures.samplerAnisotropy = vk.devFeatures.samplerAnisotropy;
+	enabledFeatures.shaderClipDistance = vk.devFeatures.shaderClipDistance;	// mirror/portal gl_ClipDistance
 
 	memset( &vk13, 0, sizeof( vk13 ) );
 	vk13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;

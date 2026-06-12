@@ -134,7 +134,16 @@ static void APIENTRY VKcap_TexCoordPointer( GLint size, GLenum type, GLsizei str
 }
 static void APIENTRY VKstub_PolygonOffset( GLfloat a, GLfloat b ) {}
 static void APIENTRY VKstub_PolygonMode( GLenum a, GLenum b ) {}
-static void APIENTRY VKstub_DepthRange( GLclampd a, GLclampd b ) {}
+
+// qglDepthRange maps to the viewport's min/max depth (used for RF_DEPTHHACK view
+// models -> 0..0.3, and the sky -> 1..1).  Re-emit the current viewport.
+static void APIENTRY VKcap_DepthRange( GLclampd zNear, GLclampd zFar ) {
+	vk.draw.viewport.minDepth = (float)zNear;
+	vk.draw.viewport.maxDepth = (float)zFar;
+	if ( vk.frameStarted && vk.cmd ) {
+		qvkCmdSetViewport( vk.cmd, 0, 1, &vk.draw.viewport );
+	}
+}
 static void APIENTRY VKstub_Color3f( GLfloat a, GLfloat b, GLfloat c ) {}
 static void APIENTRY VKstub_Color4f( GLfloat a, GLfloat b, GLfloat c, GLfloat d ) {}
 static void APIENTRY VKstub_Color4ubv( const GLubyte *v ) {}
@@ -157,7 +166,7 @@ void VK_InstallInertGLProcs( void ) {
 	qglDisable            = VKstub_Cap;
 	qglPolygonOffset      = VKstub_PolygonOffset;
 	qglPolygonMode        = VKstub_PolygonMode;
-	qglDepthRange         = VKstub_DepthRange;
+	qglDepthRange         = VKcap_DepthRange;
 	// immediate mode + matrix stack (sky box, debug draws)
 	qglColor3f            = VKstub_Color3f;
 	qglColor4f            = VKstub_Color4f;

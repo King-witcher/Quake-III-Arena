@@ -113,11 +113,11 @@ qboolean VK_InitPipelines( void ) {
 	dslInfo.pBindings = &binding;
 	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &dslInfo, NULL, &vk.descriptorSetLayout ) );
 
-	// push constant: the 4x4 MVP, vertex stage
+	// push constant: 4x4 MVP (64) + world-space clip plane vec4 (16), vertex stage
 	memset( &pushRange, 0, sizeof( pushRange ) );
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	pushRange.offset = 0;
-	pushRange.size = 16 * sizeof( float );
+	pushRange.size = ( 16 + 4 ) * sizeof( float );
 
 	sets[0] = vk.descriptorSetLayout;
 	sets[1] = vk.descriptorSetLayout;
