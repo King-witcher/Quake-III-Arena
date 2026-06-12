@@ -153,7 +153,7 @@ void R_IssueRenderCommands( qboolean runPerformanceCounters ) {
 	if ( !r_skipBackEnd->integer ) {
 		// let it start on the new batch
 		if ( !glConfig.smpActive ) {
-			RB_ExecuteRenderCommands( cmdList->cmds );
+			bk.ExecuteRenderCommands( cmdList->cmds );
 		} else {
 			GLimp_WakeRenderer( cmdList );
 		}
@@ -314,40 +314,47 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	tr.frameSceneNum = 0;
 
 	//
-	// do overdraw measurement
+	// do overdraw measurement (OpenGL-only debug path; uses immediate GL calls)
 	//
-	if ( r_measureOverdraw->integer )
+	if ( r_currentApi == RENDER_API_OPENGL )
 	{
-		if ( glConfig.stencilBits < 4 )
+		if ( r_measureOverdraw->integer )
 		{
-			ri.Printf( PRINT_ALL, "Warning: not enough stencil bits to measure overdraw: %d\n", glConfig.stencilBits );
-			ri.Cvar_Set( "r_measureOverdraw", "0" );
-			r_measureOverdraw->modified = qfalse;
-		}
-		else if ( r_shadows->integer == 2 )
-		{
-			ri.Printf( PRINT_ALL, "Warning: stencil shadows and overdraw measurement are mutually exclusive\n" );
-			ri.Cvar_Set( "r_measureOverdraw", "0" );
+			if ( glConfig.stencilBits < 4 )
+			{
+				ri.Printf( PRINT_ALL, "Warning: not enough stencil bits to measure overdraw: %d\n", glConfig.stencilBits );
+				ri.Cvar_Set( "r_measureOverdraw", "0" );
+				r_measureOverdraw->modified = qfalse;
+			}
+			else if ( r_shadows->integer == 2 )
+			{
+				ri.Printf( PRINT_ALL, "Warning: stencil shadows and overdraw measurement are mutually exclusive\n" );
+				ri.Cvar_Set( "r_measureOverdraw", "0" );
+				r_measureOverdraw->modified = qfalse;
+			}
+			else
+			{
+				R_SyncRenderThread();
+				qglEnable( GL_STENCIL_TEST );
+				qglStencilMask( ~0U );
+				qglClearStencil( 0U );
+				qglStencilFunc( GL_ALWAYS, 0U, ~0U );
+				qglStencilOp( GL_KEEP, GL_INCR, GL_INCR );
+			}
 			r_measureOverdraw->modified = qfalse;
 		}
 		else
 		{
-			R_SyncRenderThread();
-			qglEnable( GL_STENCIL_TEST );
-			qglStencilMask( ~0U );
-			qglClearStencil( 0U );
-			qglStencilFunc( GL_ALWAYS, 0U, ~0U );
-			qglStencilOp( GL_KEEP, GL_INCR, GL_INCR );
+			// this is only reached if it was on and is now off
+			if ( r_measureOverdraw->modified ) {
+				R_SyncRenderThread();
+				qglDisable( GL_STENCIL_TEST );
+			}
+			r_measureOverdraw->modified = qfalse;
 		}
-		r_measureOverdraw->modified = qfalse;
 	}
 	else
 	{
-		// this is only reached if it was on and is now off
-		if ( r_measureOverdraw->modified ) {
-			R_SyncRenderThread();
-			qglDisable( GL_STENCIL_TEST );
-		}
 		r_measureOverdraw->modified = qfalse;
 	}
 
@@ -356,7 +363,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	//
 	if ( r_textureMode->modified ) {
 		R_SyncRenderThread();
-		GL_TextureMode( r_textureMode->string );
+		bk.TextureMode( r_textureMode->string );
 		r_textureMode->modified = qfalse;
 	}
 
@@ -370,8 +377,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 		R_SetColorMappings();
 	}
 
-    // check for errors
-    if ( !r_ignoreGLErrors->integer ) {
+    // check for errors (OpenGL only; Vulkan validates via the validation layers)
+    if ( r_currentApi == RENDER_API_OPENGL && !r_ignoreGLErrors->integer ) {
         int	err;
 
 		R_SyncRenderThread();

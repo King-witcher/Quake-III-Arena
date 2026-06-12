@@ -81,6 +81,10 @@
   <PropertyGroup>
     <_ProjectFileVersion>17.0.36327.8</_ProjectFileVersion>
   </PropertyGroup>
+  <!-- Vulkan SDK headers (no import library: vulkan-1.dll is loaded dynamically) -->
+  <PropertyGroup>
+    <IncludePath>$(VULKAN_SDK)\Include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug TA|Win32'">
     <OutDir>.\Debug_TA\</OutDir>
     <IntDir>.\Debug_TA\</IntDir>
@@ -1188,6 +1192,11 @@
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
       <Optimization Condition="'$(Configuration)|$(Platform)'=='vector|Win32'">MaxSpeed</Optimization>
     </ClCompile>
+    <ClCompile Include="..\win32\win_vk.c" />
+    <ClCompile Include="vk_qvk.c" />
+    <ClCompile Include="vk_instance.c" />
+    <ClCompile Include="vk_swapchain.c" />
+    <ClCompile Include="vk_backend.c" />
     <ClCompile Include="tr_animation.c">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug TA|Win32'">Disabled</Optimization>
       <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug TA|Win32'">EnableFastChecks</BasicRuntimeChecks>
@@ -1799,6 +1808,8 @@
     <ClInclude Include="..\win32\glw_win.h" />
     <ClInclude Include="..\win32\win_local.h" />
     <ClInclude Include="qgl.h" />
+    <ClInclude Include="qvk.h" />
+    <ClInclude Include="vk_local.h" />
     <ClInclude Include="tr_local.h" />
     <ClInclude Include="tr_public.h" />
   </ItemGroup>

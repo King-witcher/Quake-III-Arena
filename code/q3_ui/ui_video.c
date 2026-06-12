@@ -270,6 +270,7 @@ typedef struct {
 	menulist_s		list;
 	menulist_s		mode;
 	menulist_s		driver;
+	menulist_s		renderapi;
 	menuslider_s	tq;
 	menulist_s  	fs;
 	menulist_s  	lighting;
@@ -296,6 +297,7 @@ typedef struct
 	int filter;
 	int driver;
 	qboolean extensions;
+	int renderapi;
 } InitialVideoOptions_s;
 
 static InitialVideoOptions_s	s_ivo;
@@ -331,6 +333,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 {
 	s_ivo.colordepth  = s_graphicsoptions.colordepth.curvalue;
 	s_ivo.driver      = s_graphicsoptions.driver.curvalue;
+	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
 	s_ivo.mode        = s_graphicsoptions.mode.curvalue;
 	s_ivo.fullscreen  = s_graphicsoptions.fs.curvalue;
 	s_ivo.extensions  = s_graphicsoptions.allow_extensions.curvalue;
@@ -442,6 +445,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
+	if ( s_ivo.renderapi != s_graphicsoptions.renderapi.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
 	if ( s_ivo.texturebits != s_graphicsoptions.texturebits.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
@@ -485,6 +492,7 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	trap_Cvar_SetValue( "r_mode", s_graphicsoptions.mode.curvalue );
 	trap_Cvar_SetValue( "r_fullscreen", s_graphicsoptions.fs.curvalue );
 	trap_Cvar_Set( "r_glDriver", ( char * ) s_drivers[s_graphicsoptions.driver.curvalue] );
+	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
 	switch ( s_graphicsoptions.colordepth.curvalue )
 	{
 	case 0:
@@ -637,6 +645,7 @@ static void GraphicsOptions_SetMenuItems( void )
 		s_graphicsoptions.mode.curvalue = 3;
 	}
 	s_graphicsoptions.fs.curvalue = trap_Cvar_VariableValue("r_fullscreen");
+	s_graphicsoptions.renderapi.curvalue = trap_Cvar_VariableValue("r_renderapi") != 0;
 	s_graphicsoptions.allow_extensions.curvalue = trap_Cvar_VariableValue("r_allowExtensions");
 	s_graphicsoptions.tq.curvalue = 3-trap_Cvar_VariableValue( "r_picmip");
 	if ( s_graphicsoptions.tq.curvalue < 0 )
@@ -723,6 +732,13 @@ void GraphicsOptions_MenuInit( void )
 	{
 		"Default",
 		"Voodoo",
+		0
+	};
+
+	static const char *renderapi_names[] =
+	{
+		"OpenGL",
+		"Vulkan",
 		0
 	};
 
@@ -889,6 +905,15 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.driver.curvalue      = (uis.glconfig.driverType == GLDRV_VOODOO);
 	y += BIGCHAR_HEIGHT+2;
 
+	// references/modifies "r_renderapi" (0 = OpenGL, 1 = Vulkan)
+	s_graphicsoptions.renderapi.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.renderapi.generic.name  = "Render API:";
+	s_graphicsoptions.renderapi.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.renderapi.generic.x     = 400;
+	s_graphicsoptions.renderapi.generic.y     = y;
+	s_graphicsoptions.renderapi.itemnames     = renderapi_names;
+	y += BIGCHAR_HEIGHT+2;
+
 	// references/modifies "r_allowExtensions"
 	s_graphicsoptions.allow_extensions.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.allow_extensions.generic.name	    = "GL Extensions:";
@@ -1017,6 +1042,7 @@ void GraphicsOptions_MenuInit( void )
 
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.list );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.renderapi );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.mode );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.colordepth );

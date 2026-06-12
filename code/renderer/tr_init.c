@@ -26,8 +26,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 glconfig_t	glConfig;
 glstate_t	glState;
 
+// render backend dispatch (see backend_t in tr_local.h)
+backend_t	bk;
+renderApi_t	r_currentApi = RENDER_API_OPENGL;
+
 static void GfxInfo_f( void );
 
+cvar_t	*r_renderapi;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -187,50 +192,101 @@ static void AssertCvarRange( cvar_t *cv, float minVal, float maxVal, qboolean sh
 ** setting variables, checking GL constants, and reporting the gfx system config
 ** to the user.
 */
-static void InitOpenGL( void )
+/*
+** GLBE_Init
+**
+** OpenGL backend bring-up leaf: create the window/context (GLimp_Init, which
+** references r_fullscreen / r_glDriver / r_mode / r_*bits / r_gamma) and query
+** the driver constants.  Never fails fatally on its own (GLimp_Init ri.Error's).
+*/
+static qboolean GLBE_Init( void )
 {
-	char renderer_buffer[1024];
-
-	//
-	// initialize OS specific portions of the renderer
-	//
-	// GLimp_Init directly or indirectly references the following cvars:
-	//		- r_fullscreen
-	//		- r_glDriver
-	//		- r_mode
-	//		- r_(color|depth|stencil)bits
-	//		- r_ignorehwgamma
-	//		- r_gamma
-	//
-	
 	if ( glConfig.vidWidth == 0 )
 	{
 		GLint		temp;
-		
-		GLimp_Init();
 
-		strcpy( renderer_buffer, glConfig.renderer_string );
-		Q_strlwr( renderer_buffer );
+		GLimp_Init();
 
 		// OpenGL driver constants
 		qglGetIntegerv( GL_MAX_TEXTURE_SIZE, &temp );
 		glConfig.maxTextureSize = temp;
 
 		// stubbed or broken drivers may have reported 0...
-		if ( glConfig.maxTextureSize <= 0 ) 
+		if ( glConfig.maxTextureSize <= 0 )
 		{
 			glConfig.maxTextureSize = 0;
 		}
+	}
+
+	return qtrue;
+}
+
+/*
+** GLBE_Shutdown
+*/
+static void GLBE_Shutdown( qboolean destroyWindow )
+{
+	if ( destroyWindow ) {
+		GLimp_Shutdown();
+	}
+}
+
+/*
+** GLBE_Install
+**
+** Point the dispatch table at the OpenGL leaves.
+*/
+void GLBE_Install( backend_t *b )
+{
+	b->name                  = "OpenGL";
+	b->Init                  = GLBE_Init;
+	b->Shutdown              = GLBE_Shutdown;
+	b->SetDefaultState       = GL_SetDefaultState;
+	b->GfxInfo               = GfxInfo_f;
+	b->ExecuteRenderCommands = RB_ExecuteRenderCommands;
+	b->CreateImage           = GL_CreateImage;
+	b->DeleteImages          = GL_DeleteImages;
+	b->TextureMode           = GL_TextureMode;
+}
+
+/*
+** InitOpenGL
+**
+** Select and initialize the active render backend (OpenGL or Vulkan).  Despite
+** the historical name, this is the single point where the backend is chosen
+** from the latched r_renderapi cvar.  If Vulkan is requested but cannot start,
+** we fall back to OpenGL so the game always boots.
+*/
+static void InitOpenGL( void )
+{
+	if ( r_renderapi->integer == 1 )
+	{
+		r_currentApi = RENDER_API_VULKAN;
+		VKBE_Install( &bk );
+		if ( !bk.Init() )
+		{
+			ri.Printf( PRINT_ALL, "...Vulkan init failed, falling back to OpenGL\n" );
+			ri.Cvar_Set( "r_renderapi", "0" );
+			r_currentApi = RENDER_API_OPENGL;
+			GLBE_Install( &bk );
+			bk.Init();
+		}
+	}
+	else
+	{
+		r_currentApi = RENDER_API_OPENGL;
+		GLBE_Install( &bk );
+		bk.Init();
 	}
 
 	// init command buffers and SMP
 	R_InitCommandBuffers();
 
 	// print info
-	GfxInfo_f();
+	bk.GfxInfo();
 
 	// set default state
-	GL_SetDefaultState();
+	bk.SetDefaultState();
 }
 
 /*
@@ -857,6 +913,9 @@ void R_Register( void )
 	//
 	// latched and archived variables
 	//
+	// 0 = OpenGL (default), 1 = Vulkan.  Latched: only takes effect on the next
+	// vid_restart, exactly like r_mode / r_fullscreen.
+	r_renderapi = ri.Cvar_Get( "r_renderapi", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1097,9 +1156,11 @@ void R_Init( void ) {
 	R_InitFreeType();
 
 
-	err = qglGetError();
-	if ( err != GL_NO_ERROR )
-		ri.Printf (PRINT_ALL, "glGetError() = 0x%x\n", err);
+	if ( r_currentApi == RENDER_API_OPENGL ) {
+		err = qglGetError();
+		if ( err != GL_NO_ERROR )
+			ri.Printf (PRINT_ALL, "glGetError() = 0x%x\n", err);
+	}
 
 	ri.Printf( PRINT_ALL, "----- finished R_Init -----\n" );
 }
@@ -1132,10 +1193,8 @@ void RE_Shutdown( qboolean destroyWindow ) {
 
 	R_DoneFreeType();
 
-	// shut down platform specific OpenGL stuff
-	if ( destroyWindow ) {
-		GLimp_Shutdown();
-	}
+	// shut down platform specific graphics (GL context or Vulkan device/window)
+	bk.Shutdown( destroyWindow );
 
 	tr.registered = qfalse;
 }
@@ -1150,7 +1209,9 @@ Touch all images to make sure they are resident
 */
 void RE_EndRegistration( void ) {
 	R_SyncRenderThread();
-	if (!Sys_LowPhysicalMemory()) {
+	// RB_ShowImages draws with immediate GL calls; the Vulkan backend has its own
+	// presentation path (the texture-residency touch is just a debug visualization).
+	if (!Sys_LowPhysicalMemory() && r_currentApi == RENDER_API_OPENGL) {
 		RB_ShowImages();
 	}
 }
@@ -1170,10 +1231,15 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	Com_Memset( &re, 0, sizeof( re ) );
 
 	if ( apiVersion != REF_API_VERSION ) {
-		ri.Printf(PRINT_ALL, "Mismatched REF_API_VERSION: expected %i, got %i\n", 
+		ri.Printf(PRINT_ALL, "Mismatched REF_API_VERSION: expected %i, got %i\n",
 			REF_API_VERSION, apiVersion );
 		return NULL;
 	}
+
+	// install the OpenGL backend as a safe default so the dispatch table is
+	// valid even before R_Init() runs (e.g. an early RE_Shutdown).  R_Init()
+	// re-selects the backend from r_renderapi.
+	GLBE_Install( &bk );
 
 	// the RE_ functions are Renderer Entry points
 

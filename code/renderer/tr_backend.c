@@ -726,6 +726,13 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	if ( !tr.registered ) {
 		return;
 	}
+
+	// Vulkan cinematic playback (scratchImage upload + 2D draw) is implemented in a
+	// later phase; skip the immediate-mode GL path so intro movies don't crash.
+	if ( r_currentApi != RENDER_API_OPENGL ) {
+		return;
+	}
+
 	R_SyncRenderThread();
 
 	// we definately want to sync every frame for the cinematics
@@ -786,6 +793,10 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 }
 
 void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty) {
+
+	if ( r_currentApi != RENDER_API_OPENGL ) {
+		return;		// Vulkan scratch-image upload arrives in a later phase
+	}
 
 	GL_Bind( tr.scratchImage[client] );
 

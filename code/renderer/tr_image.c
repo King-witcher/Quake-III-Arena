@@ -754,41 +754,58 @@ image_t *R_CreateImage( const char *name, const byte *pic, int width, int height
 	image->height = height;
 	image->wrapClampMode = glWrapClampMode;
 
-	// lightmaps are always allocated on TMU 1
-	if ( qglActiveTextureARB && isLightmap ) {
+	// lightmaps live on TMU 1 when the active backend exposes >= 2 texture
+	// units (under GL this is exactly equivalent to qglActiveTextureARB != NULL)
+	if ( isLightmap && glConfig.maxActiveTextures >= 2 ) {
 		image->TMU = 1;
 	} else {
 		image->TMU = 0;
 	}
 
-	if ( qglActiveTextureARB ) {
-		GL_SelectTexture( image->TMU );
-	}
-
-	GL_Bind(image);
-
-	Upload32( (unsigned *)pic, image->width, image->height, 
-								image->mipmap,
-								allowPicmip,
-								isLightmap,
-								&image->internalFormat,
-								&image->uploadWidth,
-								&image->uploadHeight );
-
-	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, glWrapClampMode );
-	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, glWrapClampMode );
-
-	qglBindTexture( GL_TEXTURE_2D, 0 );
-
-	if ( image->TMU == 1 ) {
-		GL_SelectTexture( 0 );
-	}
+	// hand the actual GPU upload to the active backend (GL_CreateImage / VK_CreateImage)
+	bk.CreateImage( image, pic, isLightmap );
 
 	hash = generateHashValue(name);
 	image->next = hashTable[hash];
 	hashTable[hash] = image;
 
 	return image;
+}
+
+
+/*
+================
+GL_CreateImage
+
+OpenGL backend leaf for R_CreateImage: selects the texture unit, uploads the
+pixels (power-of-two scaling, picmip, mip generation and gamma/light scaling
+all happen inside Upload32), and sets the wrap mode.  Installed into bk.CreateImage
+by GLBE_Install.
+================
+*/
+void GL_CreateImage( image_t *image, const byte *pic, qboolean isLightmap ) {
+	if ( qglActiveTextureARB ) {
+		GL_SelectTexture( image->TMU );
+	}
+
+	GL_Bind( image );
+
+	Upload32( (unsigned *)pic, image->width, image->height,
+				image->mipmap,
+				image->allowPicmip,
+				isLightmap,
+				&image->internalFormat,
+				&image->uploadWidth,
+				&image->uploadHeight );
+
+	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, image->wrapClampMode );
+	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, image->wrapClampMode );
+
+	qglBindTexture( GL_TEXTURE_2D, 0 );
+
+	if ( image->TMU == 1 ) {
+		GL_SelectTexture( 0 );
+	}
 }
 
 
@@ -2039,7 +2056,12 @@ static void R_CreateFogImage( void ) {
 	borderColor[2] = 1.0;
 	borderColor[3] = 1;
 
-	qglTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor );
+	// The fog image samples with a white border outside [0,1].  Under OpenGL this
+	// is a texture parameter; the Vulkan backend bakes the same border colour into
+	// the fog sampler (CLAMP_TO_BORDER + OPAQUE_WHITE), so skip the GL call there.
+	if ( r_currentApi == RENDER_API_OPENGL ) {
+		qglTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor );
+	}
 }
 
 /*
@@ -2218,18 +2240,18 @@ void	R_InitImages( void ) {
 
 /*
 ===============
-R_DeleteTextures
+GL_DeleteImages
+
+OpenGL backend leaf: free all GL texture objects and reset binding state.
+Installed into bk.DeleteImages by GLBE_Install.
 ===============
 */
-void R_DeleteTextures( void ) {
+void GL_DeleteImages( void ) {
 	int		i;
 
 	for ( i=0; i<tr.numImages ; i++ ) {
 		qglDeleteTextures( 1, &tr.images[i]->texnum );
 	}
-	Com_Memset( tr.images, 0, sizeof( tr.images ) );
-
-	tr.numImages = 0;
 
 	Com_Memset( glState.currenttextures, 0, sizeof( glState.currenttextures ) );
 	if ( qglBindTexture ) {
@@ -2242,6 +2264,21 @@ void R_DeleteTextures( void ) {
 			qglBindTexture( GL_TEXTURE_2D, 0 );
 		}
 	}
+}
+
+/*
+===============
+R_DeleteTextures
+
+Backend-agnostic: release the GPU textures through the active backend, then
+clear the shared image_t table.
+===============
+*/
+void R_DeleteTextures( void ) {
+	bk.DeleteImages();
+
+	Com_Memset( tr.images, 0, sizeof( tr.images ) );
+	tr.numImages = 0;
 }
 
 /*

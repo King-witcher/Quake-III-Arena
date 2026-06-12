@@ -105,6 +105,8 @@ typedef struct image_s {
 	qboolean	allowPicmip;
 	int			wrapClampMode;		// GL_CLAMP or GL_REPEAT
 
+	void		*vkData;			// Vulkan backend: pointer to vkimage_t (NULL under GL)
+
 	struct image_s*	next;
 } image_t;
 
@@ -1018,6 +1020,7 @@ extern	cvar_t	*r_facePlaneCull;		// enables culling of planar surfaces with back
 extern	cvar_t	*r_nocurves;
 extern	cvar_t	*r_showcluster;
 
+extern cvar_t	*r_renderapi;			// 0 = OpenGL (default), 1 = Vulkan; latched, applied on vid_restart
 extern cvar_t	*r_mode;				// video mode
 extern cvar_t	*r_fullscreen;
 extern cvar_t	*r_gamma;
@@ -1221,6 +1224,51 @@ shader_t *R_FindShaderByName( const char *name );
 void		R_InitShaders( void );
 void		R_ShaderList_f( void );
 void    R_RemapShader(const char *oldShader, const char *newShader, const char *timeOffset);
+
+/*
+====================================================================
+
+RENDER BACKEND ABSTRACTION
+
+The renderer front-end (tr_main/tr_shader/tr_bsp/...) is API-agnostic: it only
+builds the command list and fills tess.  Everything that actually touches the
+GPU is reached through the dispatch table below, which is pointed at either the
+OpenGL leaves (GLBE / GLimp / the tr_backend GL path) or the Vulkan leaves (the
+VK_x functions), selected at R_Init() time from the r_renderapi cvar.  Both are
+into renderer.lib; only one is active per vid_restart cycle.
+
+====================================================================
+*/
+
+typedef enum {
+	RENDER_API_OPENGL,
+	RENDER_API_VULKAN
+} renderApi_t;
+
+extern renderApi_t	r_currentApi;		// the backend actually running (post-fallback)
+
+typedef struct {
+	const char	*name;									// "OpenGL" / "Vulkan"
+	qboolean	(*Init)( void );						// bring up the graphics subsystem; qfalse => failed
+	void		(*Shutdown)( qboolean destroyWindow );
+	void		(*SetDefaultState)( void );
+	void		(*GfxInfo)( void );
+	void		(*ExecuteRenderCommands)( const void *data );
+	// texture resource leaves (image_t bookkeeping stays in tr_image.c)
+	void		(*CreateImage)( image_t *image, const byte *pic, qboolean isLightmap );
+	void		(*DeleteImages)( void );				// release all GPU textures
+	void		(*TextureMode)( const char *string );	// runtime filter change
+} backend_t;
+
+extern backend_t	bk;
+
+// installers (GLBE_Install in tr_init.c, VKBE_Install in vk_backend.c)
+void		GLBE_Install( backend_t *b );
+void		VKBE_Install( backend_t *b );
+
+// OpenGL texture leaves (tr_image.c) exposed so the GL installer can point at them
+void		GL_CreateImage( image_t *image, const byte *pic, qboolean isLightmap );
+void		GL_DeleteImages( void );
 
 /*
 ====================================================================
