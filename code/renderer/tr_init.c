@@ -429,7 +429,12 @@ RB_TakeScreenshot
 void RB_TakeScreenshot( int x, int y, int width, int height, char *fileName ) {
 	byte		*buffer;
 	int			i, c, temp;
-		
+
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_RequestScreenshot( fileName, qfalse );	// read back after the frame is submitted
+		return;
+	}
+
 	buffer = ri.Hunk_AllocateTempMemory(glConfig.vidWidth*glConfig.vidHeight*3+18);
 
 	Com_Memset (buffer, 0, 18);
@@ -467,6 +472,11 @@ RB_TakeScreenshotJPEG
 */  
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, char *fileName ) {
 	byte		*buffer;
+
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_RequestScreenshot( fileName, qtrue );
+		return;
+	}
 
 	buffer = ri.Hunk_AllocateTempMemory(glConfig.vidWidth*glConfig.vidHeight*4);
 
@@ -592,6 +602,13 @@ void R_LevelShot( void ) {
 	int			r, g, b;
 	float		xScale, yScale;
 	int			xx, yy;
+
+	// uses immediate qglReadPixels + a GL-specific downsample; not ported to the
+	// Vulkan backend (niche level-thumbnail command).  Skip rather than crash.
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		ri.Printf( PRINT_ALL, "levelshot is not supported by the Vulkan backend\n" );
+		return;
+	}
 
 	sprintf( checkname, "levelshots/%s.tga", tr.world->baseName );
 

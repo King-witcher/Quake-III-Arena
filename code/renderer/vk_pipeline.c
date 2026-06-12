@@ -142,9 +142,23 @@ qboolean VK_InitPipelines( void ) {
 	vk.shaderVert[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_single_vert, sizeof( vk_spv_single_vert ) );
 	vk.shaderFrag[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_multi_frag, sizeof( vk_spv_multi_frag ) );
 
-	memset( &cacheInfo, 0, sizeof( cacheInfo ) );
-	cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-	VK_CHECK( qvkCreatePipelineCache( vk.device, &cacheInfo, NULL, &vk.pipelineCache ) );
+	// seed the pipeline cache from disk if we saved one previously (faster warm-up;
+	// Vulkan validates the cache header and ignores incompatible/foreign data)
+	{
+		void	*cacheData = NULL;
+		int		cacheLen = ri.FS_ReadFile( "vk_pipeline.cache", &cacheData );
+
+		memset( &cacheInfo, 0, sizeof( cacheInfo ) );
+		cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+		if ( cacheLen > 0 && cacheData ) {
+			cacheInfo.initialDataSize = (size_t)cacheLen;
+			cacheInfo.pInitialData = cacheData;
+		}
+		VK_CHECK( qvkCreatePipelineCache( vk.device, &cacheInfo, NULL, &vk.pipelineCache ) );
+		if ( cacheData ) {
+			ri.FS_FreeFile( cacheData );
+		}
+	}
 
 	s_numPipelines = 0;
 	s_lastPipeline = NULL;
@@ -160,7 +174,20 @@ void VK_ShutdownPipelines( void ) {
 	s_numPipelines = 0;
 	s_lastPipeline = NULL;
 
-	if ( vk.pipelineCache ) { qvkDestroyPipelineCache( vk.device, vk.pipelineCache, NULL ); vk.pipelineCache = VK_NULL_HANDLE; }
+	if ( vk.pipelineCache ) {
+		// persist the warmed cache for next launch
+		size_t size = 0;
+		qvkGetPipelineCacheData( vk.device, vk.pipelineCache, &size, NULL );
+		if ( size > 0 ) {
+			void *data = ri.Hunk_AllocateTempMemory( (int)size );
+			if ( qvkGetPipelineCacheData( vk.device, vk.pipelineCache, &size, data ) == VK_SUCCESS ) {
+				ri.FS_WriteFile( "vk_pipeline.cache", data, (int)size );
+			}
+			ri.Hunk_FreeTempMemory( data );
+		}
+		qvkDestroyPipelineCache( vk.device, vk.pipelineCache, NULL );
+		vk.pipelineCache = VK_NULL_HANDLE;
+	}
 	for ( i = 0; i < VK_SHADER_COUNT; i++ ) {
 		if ( vk.shaderVert[i] ) { qvkDestroyShaderModule( vk.device, vk.shaderVert[i], NULL ); vk.shaderVert[i] = VK_NULL_HANDLE; }
 		if ( vk.shaderFrag[i] ) { qvkDestroyShaderModule( vk.device, vk.shaderFrag[i], NULL ); vk.shaderFrag[i] = VK_NULL_HANDLE; }

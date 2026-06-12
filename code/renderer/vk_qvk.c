@@ -155,6 +155,9 @@ static void APIENTRY VKstub_ArrayElement( GLint i ) {}
 static void APIENTRY VKstub_Ortho( GLdouble a, GLdouble b, GLdouble c, GLdouble d, GLdouble e, GLdouble f ) {}
 static void APIENTRY VKstub_MultiTexCoord2f( GLenum t, GLfloat s, GLfloat v ) {}
 
+static void APIENTRY VKstub_GetIntegerv( GLenum pname, GLint *params ) { if ( params ) params[0] = 0; }
+static void APIENTRY VKstub_ReadPixels( GLint x, GLint y, GLsizei w, GLsizei h, GLenum fmt, GLenum type, GLvoid *pixels ) {}
+
 void VK_InstallInertGLProcs( void ) {
 	// vertex arrays + draw-state (stage iterators)
 	qglEnableClientState  = VKstub_ClientState;
@@ -186,6 +189,10 @@ void VK_InstallInertGLProcs( void ) {
 	qglPopMatrix          = VKstub_Void;
 	qglTranslatef         = VKstub_Color3f;
 	qglOrtho              = VKstub_Ortho;
+	// read-only queries reachable only via dead GL paths under Vulkan; keep them
+	// inert so the "no live qgl* under VK" invariant holds (defense in depth)
+	qglGetIntegerv        = VKstub_GetIntegerv;
+	qglReadPixels         = VKstub_ReadPixels;
 }
 
 /*

@@ -84,6 +84,13 @@ void VK_BeginFrame( void ) {
 		return;
 	}
 
+	// vsync toggle: r_swapInterval change -> rebuild the swapchain with the new
+	// present mode (no full vid_restart needed)
+	if ( r_swapInterval->modified ) {
+		r_swapInterval->modified = qfalse;
+		vk.swapchainValid = qfalse;
+	}
+
 	if ( !vk.swapchainValid ) {
 		if ( !VK_RecreateSwapchain() ) {
 			return;	// minimized / not presentable
@@ -183,6 +190,135 @@ void VK_BeginFrame( void ) {
 
 /*
 ================
+VK_RequestScreenshot
+
+bk screenshot leaf: remember the request; the readback happens in VK_EndFrame
+once the frame has been rendered and submitted.
+================
+*/
+void VK_RequestScreenshot( const char *name, qboolean jpeg ) {
+	Q_strncpyz( vk.screenshotName, name, sizeof( vk.screenshotName ) );
+	vk.screenshotJpeg = jpeg;
+	vk.screenshotPending = qtrue;
+}
+
+/*
+================
+VK_RecordScreenshotCopy
+
+Record (into the frame's command buffer) a copy of the rendered swapchain image
+into a host-visible buffer, leaving the image in PRESENT layout.
+================
+*/
+static void VK_RecordScreenshotCopy( void ) {
+	VkBufferCreateInfo	bufInfo;
+	VkBufferImageCopy	region;
+	VkDeviceSize		size = (VkDeviceSize)vk.extent.width * vk.extent.height * 4;
+
+	memset( &bufInfo, 0, sizeof( bufInfo ) );
+	bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufInfo.size = size;
+	bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	VK_CHECK( qvkCreateBuffer( vk.device, &bufInfo, NULL, &vk.screenshotBuffer ) );
+	vk.screenshotMemory = VK_AllocBufferMemory( vk.screenshotBuffer,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, NULL );
+
+	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+
+	memset( &region, 0, sizeof( region ) );
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.layerCount = 1;
+	region.imageExtent.width = vk.extent.width;
+	region.imageExtent.height = vk.extent.height;
+	region.imageExtent.depth = 1;
+	qvkCmdCopyImageToBuffer( vk.cmd, vk.swapchainImages[vk.swapchainIndex],
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk.screenshotBuffer, 1, &region );
+
+	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		VK_ACCESS_TRANSFER_READ_BIT, 0,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+}
+
+/*
+================
+VK_WriteScreenshot
+
+After the copy has completed, encode the host buffer as TGA or JPEG and write it.
+The swapchain image is top-to-bottom BGRA (or RGBA); convert as needed.
+================
+*/
+static void VK_ReleaseScreenshotBuffer( void ) {
+	if ( vk.screenshotMemory ) {
+		qvkFreeMemory( vk.device, vk.screenshotMemory, NULL );
+		vk.screenshotMemory = VK_NULL_HANDLE;
+	}
+	if ( vk.screenshotBuffer ) {
+		qvkDestroyBuffer( vk.device, vk.screenshotBuffer, NULL );
+		vk.screenshotBuffer = VK_NULL_HANDLE;
+	}
+}
+
+static void VK_WriteScreenshot( void ) {
+	byte		*src = NULL;
+	int			w = vk.extent.width;
+	int			h = vk.extent.height;
+	qboolean	bgra = ( vk.surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM );
+	int			x, y;
+
+	if ( qvkMapMemory( vk.device, vk.screenshotMemory, 0, VK_WHOLE_SIZE, 0, (void **)&src ) != VK_SUCCESS ) {
+		ri.Printf( PRINT_WARNING, "VK screenshot: map failed\n" );
+		VK_ReleaseScreenshotBuffer();
+		return;
+	}
+
+	if ( vk.screenshotJpeg ) {
+		// SaveJPG wants a GL-convention (bottom-to-top) RGBA buffer
+		byte *rgba = ri.Hunk_AllocateTempMemory( w * h * 4 );
+		for ( y = 0; y < h; y++ ) {
+			const byte *s = src + (size_t)( h - 1 - y ) * w * 4;
+			byte *d = rgba + (size_t)y * w * 4;
+			for ( x = 0; x < w; x++, s += 4, d += 4 ) {
+				if ( bgra ) { d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; }
+				else        { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; }
+				d[3] = 255;
+			}
+		}
+		ri.FS_WriteFile( vk.screenshotName, rgba, 1 );	// create the path
+		SaveJPG( vk.screenshotName, 95, w, h, rgba );
+		ri.Hunk_FreeTempMemory( rgba );
+	} else {
+		// uncompressed TGA, top-left origin (matches our top-to-bottom buffer), BGR
+		byte *tga = ri.Hunk_AllocateTempMemory( w * h * 3 + 18 );
+		byte *d = tga + 18;
+		const byte *s = src;
+		Com_Memset( tga, 0, 18 );
+		tga[2] = 2;
+		tga[12] = w & 255; tga[13] = ( w >> 8 ) & 255;
+		tga[14] = h & 255; tga[15] = ( h >> 8 ) & 255;
+		tga[16] = 24;
+		tga[17] = 0x20;		// top-left origin
+		for ( y = 0; y < h; y++ ) {
+			for ( x = 0; x < w; x++, s += 4, d += 3 ) {
+				if ( bgra ) { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; }
+				else        { d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; }
+			}
+		}
+		ri.FS_WriteFile( vk.screenshotName, tga, w * h * 3 + 18 );
+		ri.Hunk_FreeTempMemory( tga );
+	}
+
+	qvkUnmapMemory( vk.device, vk.screenshotMemory );
+	VK_ReleaseScreenshotBuffer();
+	ri.Printf( PRINT_ALL, "Wrote %s\n", vk.screenshotName );
+}
+
+/*
+================
 VK_EndFrame
 
 Close the pass, submit and present.  Dispatched from RB_SwapBuffers.
@@ -201,10 +337,14 @@ void VK_EndFrame( void ) {
 
 	qvkCmdEndRendering( vk.cmd );
 
-	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+	if ( vk.screenshotPending ) {
+		VK_RecordScreenshotCopy();		// copies the image and transitions it to PRESENT
+	} else {
+		VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+	}
 
 	qvkEndCommandBuffer( vk.cmd );
 
@@ -218,13 +358,14 @@ void VK_EndFrame( void ) {
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &vk.cmd;
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &vk.renderComplete[frame];
+	// present-wait semaphore is keyed to the swapchain image, not the frame slot
+	submitInfo.pSignalSemaphores = &vk.renderComplete[vk.swapchainIndex];
 	VK_CHECK( qvkQueueSubmit( vk.graphicsQueue, 1, &submitInfo, vk.frameFence[frame] ) );
 
 	memset( &presentInfo, 0, sizeof( presentInfo ) );
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &vk.renderComplete[frame];
+	presentInfo.pWaitSemaphores = &vk.renderComplete[vk.swapchainIndex];
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &vk.swapchain;
 	presentInfo.pImageIndices = &vk.swapchainIndex;
@@ -234,6 +375,18 @@ void VK_EndFrame( void ) {
 		VK_RecreateSwapchain();
 	} else if ( res != VK_SUCCESS ) {
 		ri.Printf( PRINT_ALL, "vkQueuePresentKHR: %s\n", VK_ResultString( res ) );
+	}
+
+	// finish a pending screenshot now that the copy has been submitted
+	if ( vk.screenshotPending ) {
+		// only read the copy buffer once the GPU has actually finished it
+		if ( qvkWaitForFences( vk.device, 1, &vk.frameFence[frame], VK_TRUE, VK_TIMEOUT_NS ) == VK_SUCCESS ) {
+			VK_WriteScreenshot();
+		} else {
+			ri.Printf( PRINT_WARNING, "VK screenshot: fence wait failed\n" );
+			VK_ReleaseScreenshotBuffer();
+		}
+		vk.screenshotPending = qfalse;
 	}
 
 	vk.frameStarted = qfalse;
@@ -553,6 +706,12 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	}
 	if ( !VK_StreamIndexes( indexes, numIndexes, &idxOffset ) ) {
 		return;
+	}
+
+	// TMU0 must always have a texture bound (GL reuses the last binding; Vulkan has
+	// no fallback and would draw with an undefined descriptor).  Match GL's default.
+	if ( !vk.draw.image[0] || !vk.draw.image[0]->vkData ) {
+		vk.draw.image[0] = tr.whiteImage;
 	}
 
 	// pipeline key

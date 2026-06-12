@@ -128,6 +128,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 	X( vkCmdDraw )                              \
 	X( vkCmdDrawIndexed )                       \
 	X( vkCmdCopyBufferToImage )                 \
+	X( vkCmdCopyImageToBuffer )                 \
 	X( vkCreateSampler )                        \
 	X( vkDestroySampler )                       \
 	X( vkCreateDescriptorSetLayout )            \

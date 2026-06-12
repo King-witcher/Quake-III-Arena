@@ -127,8 +127,13 @@ typedef struct {
 	VkCommandPool		commandPool;
 	VkCommandBuffer		commandBuffers[VK_NUM_FRAMES];
 	VkSemaphore			imageAcquired[VK_NUM_FRAMES];
-	VkSemaphore			renderComplete[VK_NUM_FRAMES];
 	VkFence				frameFence[VK_NUM_FRAMES];
+
+	// present-wait semaphore: indexed by swapchain IMAGE (not frame-in-flight).
+	// A present's wait semaphore may only be re-signaled once the presentation
+	// engine has released the image (i.e. it has been re-acquired); indexing by
+	// frame would re-signal it while a present is still pending.
+	VkSemaphore			renderComplete[MAX_SWAPCHAIN_IMAGES];
 
 	// live frame state
 	int					frameIndex;			// 0..VK_NUM_FRAMES-1
@@ -136,6 +141,13 @@ typedef struct {
 	VkCommandBuffer		cmd;				// active primary command buffer
 	qboolean			frameStarted;		// between begin and present
 	qboolean			swapchainValid;		// false => needs (re)creation
+
+	// deferred screenshot (read back after the frame is submitted)
+	qboolean			screenshotPending;
+	qboolean			screenshotJpeg;
+	char				screenshotName[MAX_QPATH];
+	VkBuffer			screenshotBuffer;
+	VkDeviceMemory		screenshotMemory;
 
 	// per-frame host-visible vertex/index streaming rings (vk_memory.c)
 	VkBuffer			vertexBuffer[VK_NUM_FRAMES];

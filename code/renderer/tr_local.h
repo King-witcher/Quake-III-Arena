@@ -1275,6 +1275,7 @@ void		VK_SetViewport( void );							// 3D viewport/scissor + store projection
 void		VK_ClearView( int clearBits );					// per-view depth/stencil/color clear
 void		VK_SetModelMatrix( const float *modelMatrix );	// compute MVP = Cvk * projection * model
 void		VK_SetClipPlane( const float *plane );			// portal clip plane (world space); NULL = off
+void		VK_RequestScreenshot( const char *name, qboolean jpeg );	// deferred readback at frame end
 void		VK_State( unsigned stateBits );
 void		VK_Cull( int cullType );
 void		VK_TexEnv( int env );

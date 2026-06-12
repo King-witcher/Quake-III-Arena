@@ -156,6 +156,14 @@ void RB_ShadowTessEnd( void ) {
 	int		numTris;
 	vec3_t	lightDir;
 
+	// Stencil shadow volumes (r_shadows 2) use immediate-mode silhouette edges and
+	// direct stencil ops; not yet ported to the Vulkan backend (the default
+	// r_shadows 1 blob shadow renders through the normal path).  Skip to avoid
+	// calling unbound GL entry points under Vulkan.
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		return;
+	}
+
 	// we can only do this if we have enough space in the vertex buffers
 	if ( tess.numVertexes >= SHADER_MAX_VERTEXES / 2 ) {
 		return;

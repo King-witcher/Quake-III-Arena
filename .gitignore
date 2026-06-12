@@ -439,3 +439,5 @@ run
 code/game/vm/
 code/cgame/vm/
 code/q3_ui/vm/
+
+ignore.*

@@ -233,7 +233,8 @@ qboolean VK_CreateSwapchain( void ) {
 	createInfo.imageColorSpace = vk.surfaceFormat.colorSpace;
 	createInfo.imageExtent = vk.extent;
 	createInfo.imageArrayLayers = 1;
-	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+							VK_IMAGE_USAGE_TRANSFER_SRC_BIT;	// TRANSFER_SRC for screenshot readback
 	createInfo.preTransform = caps.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	createInfo.presentMode = vk.presentMode;
@@ -383,8 +384,13 @@ qboolean VK_CreateFrameResources( void ) {
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
 		VK_CHECK( qvkCreateSemaphore( vk.device, &semInfo, NULL, &vk.imageAcquired[i] ) );
-		VK_CHECK( qvkCreateSemaphore( vk.device, &semInfo, NULL, &vk.renderComplete[i] ) );
 		VK_CHECK( qvkCreateFence( vk.device, &fenceInfo, NULL, &vk.frameFence[i] ) );
+	}
+
+	// one present-wait semaphore per swapchain image (see vk_local.h); allocate the
+	// maximum so the set survives a swapchain rebuild with a different image count.
+	for ( i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
+		VK_CHECK( qvkCreateSemaphore( vk.device, &semInfo, NULL, &vk.renderComplete[i] ) );
 	}
 
 	vk.frameIndex = 0;
@@ -404,13 +410,16 @@ void VK_DestroyFrameResources( void ) {
 			qvkDestroySemaphore( vk.device, vk.imageAcquired[i], NULL );
 			vk.imageAcquired[i] = VK_NULL_HANDLE;
 		}
-		if ( vk.renderComplete[i] ) {
-			qvkDestroySemaphore( vk.device, vk.renderComplete[i], NULL );
-			vk.renderComplete[i] = VK_NULL_HANDLE;
-		}
 		if ( vk.frameFence[i] ) {
 			qvkDestroyFence( vk.device, vk.frameFence[i], NULL );
 			vk.frameFence[i] = VK_NULL_HANDLE;
+		}
+	}
+
+	for ( i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
+		if ( vk.renderComplete[i] ) {
+			qvkDestroySemaphore( vk.device, vk.renderComplete[i], NULL );
+			vk.renderComplete[i] = VK_NULL_HANDLE;
 		}
 	}
 
