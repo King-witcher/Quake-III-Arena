@@ -196,6 +196,15 @@ typedef struct {
 	int						dlssMode;		// vkDlssMode_t (0 = off)
 	int						dlssFrame;		// frame counter driving the jitter sequence
 
+	// "current render target" geometry, so the per-draw viewport code is agnostic
+	// to which target it is drawing into.  During the 3D scene pass these track the
+	// (sub/super-sampled) offscreen; for DLSS, VK_Set2D resolves the offscreen to the
+	// swapchain and flips these to the native display size so the HUD / console /
+	// menu text is drawn crisply at full resolution instead of being upscaled.
+	VkExtent2D				curExtent;		// = renderExtent (3D), or extent (DLSS 2D pass)
+	float					curScale;		// = ssaaScale (3D), or 1.0 (DLSS 2D pass)
+	qboolean				on2DTarget;		// DLSS: resolved + now drawing 2D onto the swapchain
+
 	// offscreen scene color target (FXAA/SSAA): the scene renders here instead of
 	// straight to the swapchain.  Per-frame-in-flight, like the depth buffer, so
 	// two concurrent frames never share it.  vk_swapchain.c owns create/destroy.

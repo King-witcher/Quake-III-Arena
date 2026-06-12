@@ -140,8 +140,12 @@ static qboolean VK_CreateDepthBuffer( void ) {
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
 		imageInfo.format = vk.depthFormat;
-		imageInfo.extent.width = vk.renderExtent.width;	// matches the scene render target (SSAA = 2x)
-		imageInfo.extent.height = vk.renderExtent.height;
+		// Size depth to cover BOTH passes: the 3D scene pass (renderExtent -- SSAA 2x,
+		// DLSS sub-display) and, for DLSS, the native-res 2D pass on the swapchain.
+		// A depth attachment larger than the render area is legal, so one buffer at
+		// max(renderExtent, extent) serves both without a second allocation.
+		imageInfo.extent.width = ( vk.renderExtent.width  > vk.extent.width )  ? vk.renderExtent.width  : vk.extent.width;
+		imageInfo.extent.height = ( vk.renderExtent.height > vk.extent.height ) ? vk.renderExtent.height : vk.extent.height;
 		imageInfo.extent.depth = 1;
 		imageInfo.mipLevels = 1;
 		imageInfo.arrayLayers = 1;

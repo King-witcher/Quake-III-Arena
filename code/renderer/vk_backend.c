@@ -126,6 +126,12 @@ void VK_BeginFrame( void ) {
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	qvkBeginCommandBuffer( vk.cmd, &beginInfo );
 
+	// the scene pass draws into renderExtent at ssaaScale; VK_Set2D may flip these to
+	// the native swapchain size mid-frame for the DLSS 2D pass (see VK_Set2D).
+	vk.curExtent = vk.renderExtent;
+	vk.curScale  = vk.ssaaScale;
+	vk.on2DTarget = qfalse;
+
 	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
 	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
 	// viewport and are sized to renderExtent (= swapchain extent, or 2x under SSAA).
@@ -531,18 +537,20 @@ void VK_EndFrame( void ) {
 		return;
 	}
 
-	qvkCmdEndRendering( vk.cmd );		// ends the scene pass (offscreen for FXAA/SSAA)
+	qvkCmdEndRendering( vk.cmd );		// ends the scene pass, or the DLSS native-res 2D pass
 
 	// resolve the offscreen scene color into the swapchain (FXAA = shader pass,
 	// SSAA = downsampling blit); Off rendered straight into the swapchain already.
-	if ( vk.aaMode == VK_AA_FXAA ) {
+	if ( vk.on2DTarget ) {
+		// DLSS: the scene was already upscaled to the swapchain in VK_Set2D and the 2D
+		// overlay was drawn straight onto it at native res -- nothing left to resolve.
+	} else if ( vk.aaMode == VK_AA_FXAA ) {
 		VK_ResolveFXAA();
 	} else if ( vk.aaMode == VK_AA_SSAA ) {
 		VK_ResolveSSAA();
 	} else if ( vk.aaMode == VK_AA_DLSS ) {
-		// DLSS rendered the scene into a SUB-display offscreen.  The fullscreen
-		// FXAA pass samples it through a linear sampler, upscaling it to the
-		// swapchain (bilinear + edge smoothing) -- the SDK-free fallback.
+		// DLSS frame that drew no 2D (rare): upscale the offscreen now.  The fullscreen
+		// FXAA pass samples it through a linear sampler, upscaling to the swapchain.
 		// UPGRADE PATH: when an NGX feature is live and a render-res motion-vector
 		// buffer is produced, call VK_DLSS_Evaluate(...) here instead (see vk_dlss.c).
 		VK_ResolveFXAA();
@@ -611,6 +619,50 @@ void VK_EndFrame( void ) {
 
 /*
 ================
+VK_Begin2DPass
+
+DLSS only: after the sub-display 3D scene has been upscaled into the swapchain,
+open a fresh native-resolution pass that draws the 2D overlay (HUD/console/menu)
+straight onto the swapchain.  Colour is LOAD'ed (keep the upscaled scene); the
+shared depth buffer (sized to max(renderExtent,extent)) is cleared so any 3D
+models drawn during the 2D phase (e.g. the menu player preview) depth-test
+correctly at native resolution.
+================
+*/
+static void VK_Begin2DPass( void ) {
+	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingAttachmentInfo	depthAttachment;
+	VkRenderingInfo				renderingInfo;
+
+	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageView = vk.swapchainViews[vk.swapchainIndex];
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;	// keep the resolved 3D scene
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	memset( &depthAttachment, 0, sizeof( depthAttachment ) );
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.imageView = vk.depthView[vk.frameIndex];
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.clearValue.depthStencil.depth = 1.0f;
+	depthAttachment.clearValue.depthStencil.stencil = 0;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.renderArea.extent = vk.extent;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+	renderingInfo.pDepthAttachment = &depthAttachment;
+
+	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+}
+
+/*
+================
 VK_Set2D
 
 RB_SetGL2D leaf: build the orthographic MVP (screen pixels -> Vulkan clip) and a
@@ -641,23 +693,38 @@ void VK_Set2D( void ) {
 	vk.draw.clipPlane[0] = vk.draw.clipPlane[1] = vk.draw.clipPlane[2] = vk.draw.clipPlane[3] = 0.0f;	// 2D never clips
 
 	if ( vk.frameStarted ) {
-		// pixel rects scale by the SSAA factor (1.0 for Off/FXAA) so the HUD/2D fills
-		// the larger render target; the ortho matrix above stays resolution-independent.
-		float s = vk.ssaaScale;
-		memset( &viewport, 0, sizeof( viewport ) );
-		viewport.x = 0.0f;
-		viewport.y = h * s;		// negative-height viewport (flip Y in the viewport transform)
-		viewport.width = w * s;
-		viewport.height = -h * s;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		vk.draw.viewport = viewport;
-		qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
+		// DLSS: the 3D scene was rendered into the sub-display offscreen.  On the FIRST
+		// 2D draw of the frame, resolve/upscale it onto the swapchain and switch to
+		// drawing the 2D overlay directly at native resolution (crisp text), instead of
+		// drawing 2D into the low-res offscreen and upscaling it with the scene.
+		if ( vk.aaMode == VK_AA_DLSS && !vk.on2DTarget ) {
+			qvkCmdEndRendering( vk.cmd );		// end the 3D offscreen pass
+			VK_ResolveFXAA();					// offscreen(renderExtent) -> swapchain(extent)
+			VK_Begin2DPass();					// native-res swapchain pass for the 2D
+			vk.on2DTarget = qtrue;
+			vk.curExtent = vk.extent;
+			vk.curScale = 1.0f;
+		}
 
-		scissor.offset.x = 0;
-		scissor.offset.y = 0;
-		scissor.extent = vk.renderExtent;
-		qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
+		// pixel rects scale by the current target's factor (SSAA > 1, DLSS 2D = 1.0) so
+		// the HUD/2D fills the target; the ortho matrix above stays res-independent.
+		{
+			float s = vk.curScale;
+			memset( &viewport, 0, sizeof( viewport ) );
+			viewport.x = 0.0f;
+			viewport.y = h * s;		// negative-height viewport (flip Y in the viewport transform)
+			viewport.width = w * s;
+			viewport.height = -h * s;
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vk.draw.viewport = viewport;
+			qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
+
+			scissor.offset.x = 0;
+			scissor.offset.y = 0;
+			scissor.extent = vk.curExtent;
+			qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
+		}
 	}
 }
 
@@ -703,10 +770,10 @@ void VK_SetViewport( void ) {
 		return;
 	}
 
-	// scale pixel rects by the SSAA factor (1.0 for Off/FXAA); the projection above is
-	// resolution-independent and is NOT scaled.
+	// scale pixel rects by the current target's factor (SSAA > 1, DLSS 2D = 1.0); the
+	// projection above is resolution-independent and is NOT scaled.
 	{
-		float s = vk.ssaaScale;
+		float s = vk.curScale;
 		memset( &vp, 0, sizeof( vp ) );
 		vp.x = (float)x * s;
 		vp.y = (float)( yTop + h ) * s;		// negative-height viewport (GL-compatible Y)
@@ -763,9 +830,9 @@ void VK_ClearView( int clearBits ) {
 		n++;
 	}
 
-	// clear rect in framebuffer (top-left) coords, scaled by the SSAA factor (1.0 for Off/FXAA)
+	// clear rect in framebuffer (top-left) coords, scaled by the current target's factor
 	{
-		float s = vk.ssaaScale;
+		float s = vk.curScale;
 		int yTop = glConfig.vidHeight - backEnd.viewParms.viewportY - backEnd.viewParms.viewportHeight;
 		rect.rect.offset.x = (int32_t)( backEnd.viewParms.viewportX * s );
 		rect.rect.offset.y = (int32_t)( yTop * s );
