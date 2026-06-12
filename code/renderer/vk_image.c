@@ -40,6 +40,7 @@ typedef struct {
 	int			filterMax;
 	qboolean	mipmap;
 	qboolean	border;			// CLAMP_TO_BORDER + opaque white (the *fog image)
+	float		aniso;			// max anisotropy (1.0 = disabled)
 	VkSampler	sampler;
 } vkSamplerCacheEntry_t;
 
@@ -77,13 +78,37 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap, qboolean bor
 	int					i;
 	int					filterMin = mipmap ? gl_filter_min : GL_LINEAR;
 	int					filterMax = mipmap ? gl_filter_max : GL_LINEAR;
+	float				aniso = 1.0f;
+	// Anisotropy is only legal with LINEAR min+mag filters (Vulkan forbids anisotropyEnable
+	// with a NEAREST filter, and it is visually pointless there anyway).  Q3's texture-mode
+	// table pairs a LINEAR mag with every LINEAR-family min, so testing the resolved GL
+	// filters here covers both Vulkan filters.  Only the GL_NEAREST* modes (set via the
+	// r_textureMode console cvar; the menu only exposes the linear ones) disable it.
+	qboolean			linearFilter =
+		( filterMax == GL_LINEAR ) &&
+		( filterMin == GL_LINEAR ||
+		  filterMin == GL_LINEAR_MIPMAP_NEAREST ||
+		  filterMin == GL_LINEAR_MIPMAP_LINEAR );
+
+	// Anisotropic filtering only matters for minified, mipmapped (world) textures, and
+	// only if the device advertises the feature.  r_textureAnisotropy holds the ratio
+	// (1 = off, 2/4/8); clamp to the device maximum.  It is latched, so it is constant
+	// for the lifetime of the device and every sampler created here uses the same value.
+	if ( mipmap && linearFilter && vk.devFeatures.samplerAnisotropy &&
+		 r_textureAnisotropy && r_textureAnisotropy->value > 1.0f ) {
+		aniso = r_textureAnisotropy->value;
+		if ( aniso > vk.devProps.limits.maxSamplerAnisotropy ) {
+			aniso = vk.devProps.limits.maxSamplerAnisotropy;
+		}
+	}
 
 	for ( i = 0; i < s_numSamplers; i++ ) {
 		if ( s_samplers[i].wrapClampMode == wrapClampMode &&
 			 s_samplers[i].filterMin == filterMin &&
 			 s_samplers[i].filterMax == filterMax &&
 			 s_samplers[i].mipmap == mipmap &&
-			 s_samplers[i].border == border ) {
+			 s_samplers[i].border == border &&
+			 s_samplers[i].aniso == aniso ) {
 			return s_samplers[i].sampler;
 		}
 	}
@@ -120,8 +145,8 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap, qboolean bor
 		info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	}
 	info.mipLodBias = 0.0f;
-	info.anisotropyEnable = VK_FALSE;
-	info.maxAnisotropy = 1.0f;
+	info.anisotropyEnable = ( aniso > 1.0f ) ? VK_TRUE : VK_FALSE;
+	info.maxAnisotropy = aniso;
 	info.minLod = 0.0f;
 	info.maxLod = mipmap ? VK_LOD_CLAMP_NONE : 0.0f;
 	info.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
@@ -134,6 +159,7 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap, qboolean bor
 		s_samplers[s_numSamplers].filterMax = filterMax;
 		s_samplers[s_numSamplers].mipmap = mipmap;
 		s_samplers[s_numSamplers].border = border;
+		s_samplers[s_numSamplers].aniso = aniso;
 		s_samplers[s_numSamplers].sampler = sampler;
 		s_numSamplers++;
 	}

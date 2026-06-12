@@ -34,6 +34,7 @@ static void GfxInfo_f( void );
 
 cvar_t	*r_renderapi;
 cvar_t	*r_antialiasing;
+cvar_t	*r_textureAnisotropy;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -357,7 +358,8 @@ vidmode_t r_vidModes[] =
     { "Mode  8: 1280x1024",		1280,	1024,	1 },
     { "Mode  9: 1600x1200",		1600,	1200,	1 },
     { "Mode 10: 2048x1536",		2048,	1536,	1 },
-    { "Mode 11: 856x480 (wide)",856,	480,	1 }
+    { "Mode 11: 856x480 (wide)",856,	480,	1 },
+    { "Mode 12: 1920x1080",		1920,	1080,	1 }
 };
 static int	s_numVidModes = ( sizeof( r_vidModes ) / sizeof( r_vidModes[0] ) );
 
@@ -937,6 +939,9 @@ void R_Register( void )
 	// 0 = Off, 1 = FXAA, 2 = SSAA.  Vulkan-only (treated as Off under OpenGL); latched,
 	// applied on the next vid_restart like r_renderapi / r_mode.
 	r_antialiasing = ri.Cvar_Get( "r_antialiasing", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// 1 = Off, 2/4/8 = anisotropic filtering ratio.  Vulkan-only (inert under OpenGL);
+	// latched, applied on the next vid_restart like r_antialiasing.
+	r_textureAnisotropy = ri.Cvar_Get( "r_textureAnisotropy", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );

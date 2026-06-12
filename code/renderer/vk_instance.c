@@ -723,6 +723,15 @@ void VK_GfxInfo( void ) {
 		glConfig.isFullscreen ? "fullscreen" : "windowed" );
 	ri.Printf( PRINT_ALL, "GAMMA: software w/ %d overbright bits\n", tr.overbrightBits );
 	ri.Printf( PRINT_ALL, "texturemode: %s\n", r_textureMode->string );
+	if ( vk.devFeatures.samplerAnisotropy && r_textureAnisotropy && r_textureAnisotropy->value > 1.0f ) {
+		float a = r_textureAnisotropy->value;
+		if ( a > vk.devProps.limits.maxSamplerAnisotropy ) {
+			a = vk.devProps.limits.maxSamplerAnisotropy;
+		}
+		ri.Printf( PRINT_ALL, "anisotropic filter: %gx\n", a );
+	} else {
+		ri.Printf( PRINT_ALL, "anisotropic filter: off\n" );
+	}
 	ri.Printf( PRINT_ALL, "picmip: %d\n", r_picmip->integer );
 	ri.Printf( PRINT_ALL, "validation: %s\n", vk.validation ? "enabled" : "disabled" );
 	ri.Printf( PRINT_ALL, "antialiasing: %s\n",

@@ -272,6 +272,7 @@ typedef struct {
 	menulist_s		driver;
 	menulist_s		renderapi;
 	menulist_s		antialiasing;
+	menulist_s		anisotropic;
 	menuslider_s	tq;
 	menulist_s  	fs;
 	menulist_s  	lighting;
@@ -300,6 +301,7 @@ typedef struct
 	qboolean extensions;
 	int renderapi;
 	int antialiasing;
+	int anisotropic;
 } InitialVideoOptions_s;
 
 static InitialVideoOptions_s	s_ivo;
@@ -309,6 +311,13 @@ static graphicsoptions_t		s_graphicsoptions;
 // offers "Off" (the menu swaps the list based on the selected Render API).
 static const char *aa_names_gl[] = { "Off", 0 };
 static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 4x", 0 };
+
+// Anisotropic texture-filter levels.  Vulkan-only (the legacy GL backend does not set
+// sampler anisotropy here), so OpenGL only ever offers "Off".  The curvalue index maps
+// to the r_textureAnisotropy ratio via aniso_values[].
+static const char *aniso_names_gl[] = { "Off", 0 };
+static const char *aniso_names_vk[] = { "Off", "2x", "4x", "8x", 0 };
+static const int   aniso_values[]   = { 1, 2, 4, 8 };
 
 static InitialVideoOptions_s s_ivo_templates[] =
 {
@@ -342,6 +351,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.driver      = s_graphicsoptions.driver.curvalue;
 	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
 	s_ivo.antialiasing = s_graphicsoptions.antialiasing.curvalue;
+	s_ivo.anisotropic = s_graphicsoptions.anisotropic.curvalue;
 	s_ivo.mode        = s_graphicsoptions.mode.curvalue;
 	s_ivo.fullscreen  = s_graphicsoptions.fs.curvalue;
 	s_ivo.extensions  = s_graphicsoptions.allow_extensions.curvalue;
@@ -438,6 +448,19 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.antialiasing.numitems  = 3;
 	}
 
+	// Anisotropic filtering is Vulkan-only too: OpenGL offers only "Off".
+	if ( s_graphicsoptions.renderapi.curvalue == 0 )
+	{
+		s_graphicsoptions.anisotropic.itemnames = aniso_names_gl;
+		s_graphicsoptions.anisotropic.numitems  = 1;
+		s_graphicsoptions.anisotropic.curvalue  = 0;
+	}
+	else
+	{
+		s_graphicsoptions.anisotropic.itemnames = aniso_names_vk;
+		s_graphicsoptions.anisotropic.numitems  = 4;
+	}
+
 	s_graphicsoptions.apply.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 
 	if ( s_ivo.mode != s_graphicsoptions.mode.curvalue )
@@ -473,6 +496,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 	if ( s_ivo.antialiasing != s_graphicsoptions.antialiasing.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
+	if ( s_ivo.anisotropic != s_graphicsoptions.anisotropic.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
@@ -521,6 +548,13 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	trap_Cvar_Set( "r_glDriver", ( char * ) s_drivers[s_graphicsoptions.driver.curvalue] );
 	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
 	trap_Cvar_SetValue( "r_antialiasing", s_graphicsoptions.antialiasing.curvalue );
+	{
+		int aidx = s_graphicsoptions.anisotropic.curvalue;
+		if ( aidx < 0 || aidx > 3 ) {
+			aidx = 0;
+		}
+		trap_Cvar_SetValue( "r_textureAnisotropy", aniso_values[aidx] );
+	}
 	switch ( s_graphicsoptions.colordepth.curvalue )
 	{
 	case 0:
@@ -680,6 +714,18 @@ static void GraphicsOptions_SetMenuItems( void )
 		// FXAA/SSAA are Vulkan-only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.antialiasing.curvalue = 0;
 	}
+	{
+		// map the r_textureAnisotropy ratio (1/2/4/8) back to a spin index
+		int aniso = (int)trap_Cvar_VariableValue( "r_textureAnisotropy" );
+		if ( aniso >= 8 )      s_graphicsoptions.anisotropic.curvalue = 3;
+		else if ( aniso >= 4 ) s_graphicsoptions.anisotropic.curvalue = 2;
+		else if ( aniso >= 2 ) s_graphicsoptions.anisotropic.curvalue = 1;
+		else                   s_graphicsoptions.anisotropic.curvalue = 0;
+		// anisotropic filtering is Vulkan-only here
+		if ( s_graphicsoptions.renderapi.curvalue == 0 ) {
+			s_graphicsoptions.anisotropic.curvalue = 0;
+		}
+	}
 	s_graphicsoptions.allow_extensions.curvalue = trap_Cvar_VariableValue("r_allowExtensions");
 	s_graphicsoptions.tq.curvalue = 3-trap_Cvar_VariableValue( "r_picmip");
 	if ( s_graphicsoptions.tq.curvalue < 0 )
@@ -823,6 +869,7 @@ void GraphicsOptions_MenuInit( void )
 		"1600x1200",
 		"2048x1536",
 		"856x480 wide screen",
+		"1920x1080",
 		0
 	};
 	static const char *filter_names[] =
@@ -919,7 +966,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
-	y = 240 - 7 * (BIGCHAR_HEIGHT + 2);
+	y = 240 - 8 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -957,6 +1004,17 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.antialiasing.generic.x     = 400;
 	s_graphicsoptions.antialiasing.generic.y     = y;
 	s_graphicsoptions.antialiasing.itemnames     = aa_names_vk;
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_textureAnisotropy" (1 = Off, 2/4/8 = ratio; Vulkan-only).
+	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
+	// GraphicsOptions_UpdateMenuItems swaps it to aniso_names_gl under OpenGL.
+	s_graphicsoptions.anisotropic.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.anisotropic.generic.name  = "Anisotropic Filter:";
+	s_graphicsoptions.anisotropic.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.anisotropic.generic.x     = 400;
+	s_graphicsoptions.anisotropic.generic.y     = y;
+	s_graphicsoptions.anisotropic.itemnames     = aniso_names_vk;
 	y += BIGCHAR_HEIGHT+2;
 
 	// references/modifies "r_allowExtensions"
@@ -1089,6 +1147,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.renderapi );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.antialiasing );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.anisotropic );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.mode );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.colordepth );
