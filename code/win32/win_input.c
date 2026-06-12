@@ -405,6 +405,15 @@ void IN_DIMouse( int *mx, int *my ) {
   int value;
 	static float		oldSysTime;
 
+	// ALWAYS define the output.  Several paths below (no device, input lost /
+	// not acquired after a focus change) return early; if *mx/*my were left
+	// untouched the caller (IN_MouseMove) read uninitialized stack garbage and
+	// queued it as a mouse delta -- a phantom movement that spun the view on its
+	// own and could not be overridden by the real mouse.  This bit when the window
+	// lost and regained focus (e.g. another app stealing focus), leaving the DI
+	// device unacquired for a frame or two.
+	*mx = *my = 0;
+
 	if ( !g_pMouse ) {
 		return;
 	}
@@ -633,7 +642,7 @@ IN_MouseMove
 ===========
 */
 void IN_MouseMove ( void ) {
-	int		mx, my;
+	int		mx = 0, my = 0;		// never feed uninitialized deltas to the view
 
 	if ( g_pMouse ) {
 		IN_DIMouse( &mx, &my );
