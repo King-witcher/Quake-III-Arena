@@ -460,19 +460,8 @@ void CG_DamagePlum( int client, vec3_t org, int damage ) {
 	// store the damage and pick a color by magnitude
 	le->radius = damage;
 	le->color[0] = 1.0f;
-	if ( damage >= 75 ) {			// red
-		le->color[1] = 0.0f;
-		le->color[2] = 0.0f;
-	} else if ( damage >= 50 ) {	// orange
-		le->color[1] = 0.5f;
-		le->color[2] = 0.0f;
-	} else if ( damage >= 25 ) {	// yellow
-		le->color[1] = 1.0f;
-		le->color[2] = 0.0f;
-	} else {						// white
-		le->color[1] = 1.0f;
-		le->color[2] = 1.0f;
-	}
+	le->color[1] = Com_Clamp(0.0f, 1.0f, 2.0f - damage / 50.0f);
+	le->color[2] = Com_Clamp(0.0f, 1.0f, 1.0f - damage / 50.0f);
 	le->color[3] = 1.0f;
 
 	VectorCopy( org, le->pos.trBase );

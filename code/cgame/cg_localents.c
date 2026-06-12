@@ -840,16 +840,20 @@ a damage number, shared by the 3D-sprite and 2D-text renderers.
 */
 static void CG_DamagePlumPosition( localEntity_t *le, vec3_t origin, float *alpha ) {
 	float	c;
+	float ageSecs;
 
 	c = ( le->endTime - cg.time ) * le->lifeRate;	// 1 at spawn -> 0 at death
 
 	VectorCopy( le->pos.trBase, origin );
-	// float upward at ~150 u/s so rapid hits (e.g. a lightning gun stream)
+	// float upward at ~50 u/s so rapid hits (e.g. a lightning gun stream)
 	// spread out vertically into separate, readable numbers
-	origin[2] += ( cg.time - le->startTime ) * 0.15f;
+	ageSecs = ( cg.time - le->startTime ) / 1000.0f;
+	origin[2] += ( 2.0f * ageSecs - 3.0f * ageSecs * ageSecs ) * 50.0f;
+	// origin[2] += ageSecs * 50.0f;
 
-	if ( c < 0.35f ) {
-		*alpha = c / 0.35f;							// fade out near the end
+
+	if ( c < 0.67f ) {
+		*alpha = c / 0.67f;							// fade out near the end
 	} else {
 		*alpha = 1.0f;
 	}
@@ -963,7 +967,7 @@ void CG_DrawDamagePlums( void ) {
 		dmg = (int) le->radius;
 
 		// scale the text by damage
-		scale = ( 60 + dmg ) / 80.0f;
+		scale = ( 70 + dmg ) / 80.0f;
 		cw = (int) ( DAMAGEPLUM_CHAR_WIDTH * scale );
 		ch = (int) ( DAMAGEPLUM_CHAR_HEIGHT * scale );
 		if ( cw < 1 ) {
