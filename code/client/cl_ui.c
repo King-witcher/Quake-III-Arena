@@ -757,7 +757,7 @@ static int FloatAsInt( float f ) {
 	return temp;
 }
 
-void *VM_ArgPtr( int intValue );
+void *VM_ArgPtr( intptr_t intValue );	// must match qcommon.h; an int here truncated 64-bit pointers
 #define	VMA(x) VM_ArgPtr(args[x])
 #define	VMF(x)	(*(float *)&args[x])
 
@@ -782,7 +782,7 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		return Sys_Milliseconds();
 
 	case UI_CVAR_REGISTER:
-		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4] ); 
+		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4] );
 		return 0;
 
 	case UI_CVAR_UPDATE:
