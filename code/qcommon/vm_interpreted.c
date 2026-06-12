@@ -21,6 +21,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "vm_local.h"
 
+// Maximum number of arguments marshalled from the QVM stack into an intptr_t
+// array for a single engine syscall (covers the widest trap_* call).
+#define MAX_VMSYSCALL_ARGS	16
+
 #ifdef DEBUG_VM // bk001204
 static char	*opnames[256] = {
 	"OP_UNDEF", 
@@ -310,7 +314,7 @@ locals from sp
 
 #define	DEBUGSTR va("%s%i", VM_Indent(vm), opStack-stack )
 
-int	VM_CallInterpreted( vm_t *vm, int *args ) {
+intptr_t	VM_CallInterpreted( vm_t *vm, int *args ) {
 	int		stack[MAX_STACK];
 	int		*opStack;
 	int		programCounter;
@@ -518,7 +522,21 @@ nextInstruction2:
 				*(int *)&image[ programStack + 4 ] = -1 - programCounter;
 
 //VM_LogSyscalls( (int *)&image[ programStack + 4 ] );
-				r = vm->systemCall( (int *)&image[ programStack + 4 ] );
+				{
+					// The QVM stack holds 32-bit arguments, but the engine's
+					// syscall handlers take an intptr_t array (so native-DLL
+					// pointers survive on 64-bit).  Widen the VM-stack ints into
+					// a local intptr_t array before dispatching.  args[0] is the
+					// (negated) syscall number; the rest are int values or
+					// VM-relative offsets that VM_ArgPtr resolves.
+					intptr_t	syscallArgs[MAX_VMSYSCALL_ARGS];
+					int			*vmArgs = (int *)&image[ programStack + 4 ];
+					int			sa;
+					for ( sa = 0 ; sa < MAX_VMSYSCALL_ARGS ; sa++ ) {
+						syscallArgs[sa] = vmArgs[sa];
+					}
+					r = (int)vm->systemCall( syscallArgs );
+				}
 
 #ifdef DEBUG_VM
 				// this is just our stack frame pointer, only needed

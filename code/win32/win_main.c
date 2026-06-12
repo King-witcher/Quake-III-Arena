@@ -219,7 +219,7 @@ DIRECTORY SCANNING
 void Sys_ListFilteredFiles( const char *basedir, char *subdirs, char *filter, char **list, int *numfiles ) {
 	char		search[MAX_OSPATH], newsubdirs[MAX_OSPATH];
 	char		filename[MAX_OSPATH];
-	int			findhandle;
+	intptr_t	findhandle;		// _findfirst returns intptr_t; truncating to int corrupts the handle on x64
 	struct _finddata_t findinfo;
 
 	if ( *numfiles >= MAX_FOUND_FILES - 1 ) {
@@ -290,7 +290,7 @@ char **Sys_ListFiles( const char *directory, const char *extension, char *filter
 	char		**listCopy;
 	char		*list[MAX_FOUND_FILES];
 	struct _finddata_t findinfo;
-	int			findhandle;
+	intptr_t	findhandle;		// _findfirst returns intptr_t; truncating to int corrupts the handle on x64
 	int			flag;
 	int			i;
 
@@ -526,11 +526,11 @@ extern char		*FS_BuildOSPath( const char *base, const char *game, const char *qp
 // fqpath param added 7/20/02 by T.Ray - Sys_LoadDll is only called in vm.c at this time
 // fqpath will be empty if dll not loaded, otherwise will hold fully qualified path of dll module loaded
 // fqpath buffersize must be at least MAX_QPATH+1 bytes long
-void * QDECL Sys_LoadDll( const char *name, char *fqpath , int (QDECL **entryPoint)(int, ...),
-				  int (QDECL *systemcalls)(int, ...) ) {
+void * QDECL Sys_LoadDll( const char *name, char *fqpath , intptr_t (QDECL **entryPoint)(intptr_t, ...),
+				  intptr_t (QDECL *systemcalls)(intptr_t, ...) ) {
 	static int	lastWarning = 0;
 	HINSTANCE	libHandle;
-	void	(QDECL *dllEntry)( int (QDECL *syscallptr)(int, ...) );
+	void	(QDECL *dllEntry)( intptr_t (QDECL *syscallptr)(intptr_t, ...) );
 	char	*basepath;
 	char	*cdpath;
 	char	*gamedir;
@@ -606,8 +606,8 @@ void * QDECL Sys_LoadDll( const char *name, char *fqpath , int (QDECL **entryPoi
 	}
 #endif
 
-	dllEntry = ( void (QDECL *)( int (QDECL *)( int, ... ) ) )GetProcAddress( libHandle, "dllEntry" ); 
-	*entryPoint = (int (QDECL *)(int,...))GetProcAddress( libHandle, "vmMain" );
+	dllEntry = ( void (QDECL *)( intptr_t (QDECL *)( intptr_t, ... ) ) )GetProcAddress( libHandle, "dllEntry" );
+	*entryPoint = (intptr_t (QDECL *)(intptr_t,...))GetProcAddress( libHandle, "vmMain" );
 	if ( !*entryPoint || !dllEntry ) {
 		FreeLibrary( libHandle );
 		return NULL;
@@ -1088,9 +1088,12 @@ void Sys_Init( void ) {
 		Cvar_Set( "arch", "unknown Windows variant" );
 	}
 
-	// save out a couple things in rom cvars for the renderer to access
-	Cvar_Get( "win_hinstance", va("%i", (int)g_wv.hInstance), CVAR_ROM );
-	Cvar_Get( "win_wndproc", va("%i", (int)MainWndProc), CVAR_ROM );
+	// save out a couple things in rom cvars for the renderer to access.
+	// Use %p (full pointer width) -- the old "%i"/(int) cast truncated these
+	// 64-bit pointers to 32 bits, handing the renderer a garbage WNDPROC that
+	// crashed CreateWindowEx's first callback on x64.
+	Cvar_Get( "win_hinstance", va("%p", (void *)g_wv.hInstance), CVAR_ROM );
+	Cvar_Get( "win_wndproc", va("%p", (void *)MainWndProc), CVAR_ROM );
 
 	//
 	// figure out our CPU
@@ -1194,8 +1197,10 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	g_wv.hInstance = hInstance;
 	Q_strncpyz( sys_cmdline, lpCmdLine, sizeof( sys_cmdline ) );
 
+	Com_BootLog( "WinMain: enter" );
 	// done before Com/Sys_Init since we need this for error output
 	Sys_CreateConsole();
+	Com_BootLog( "after Sys_CreateConsole" );
 
 	// no abort/retry/fail errors
 	SetErrorMode( SEM_FAILCRITICALERRORS );
@@ -1208,9 +1213,12 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 #endif
 
 	Sys_InitStreamThread();
+	Com_BootLog( "after Sys_InitStreamThread; before Com_Init" );
 
 	Com_Init( sys_cmdline );
+	Com_BootLog( "after Com_Init returned" );
 	NET_Init();
+	Com_BootLog( "after NET_Init" );
 
 	_getcwd (cwd, sizeof(cwd));
 	Com_Printf("Working directory: %s\n", cwd);

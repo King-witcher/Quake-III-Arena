@@ -1023,6 +1023,7 @@ extern	cvar_t	*r_showcluster;
 extern cvar_t	*r_renderapi;			// 0 = OpenGL (default), 1 = Vulkan; latched, applied on vid_restart
 extern cvar_t	*r_antialiasing;		// 0 = Off, 1 = FXAA, 2 = SSAA; Vulkan-only; latched
 extern cvar_t	*r_textureAnisotropy;	// 1 = Off, 2/4/8 = anisotropic ratio; Vulkan-only; latched
+extern cvar_t	*r_dlss;				// 0 = Off, 1 = Quality, 2 = Balanced, 3 = Performance, 4 = Ultra Perf; Vulkan-only; latched
 extern cvar_t	*r_mode;				// video mode
 extern cvar_t	*r_fullscreen;
 extern cvar_t	*r_gamma;

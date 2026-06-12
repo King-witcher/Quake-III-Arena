@@ -59,14 +59,20 @@ Sys_SnapVector
 ================
 */
 long fastftol( float f ) {
+#if id386
 	static int tmp;
 	__asm fld f
 	__asm fistp tmp
 	__asm mov eax, tmp
+#else
+	// x64 has no inline x87 asm; SSE float->int conversion via a plain cast.
+	return (long)f;
+#endif
 }
 
 void Sys_SnapVector( float *v )
 {
+#if id386
 	int i;
 	float f;
 
@@ -91,6 +97,13 @@ void Sys_SnapVector( float *v )
 	v++;
 	*v = fastftol(*v);
 	*/
+#else
+	// portable round-toward-zero snap, matches the fistp truncation closely
+	// enough for the network/precision use this serves.
+	v[0] = (float)(int)v[0];
+	v[1] = (float)(int)v[1];
+	v[2] = (float)(int)v[2];
+#endif
 }
 
 
@@ -108,6 +121,7 @@ void Sys_SnapVector( float *v )
 **
 ** --------------------------------------------------------------------------------
 */
+#if id386
 static void CPUID( int func, unsigned regs[4] )
 {
 	unsigned regEAX, regEBX, regECX, regEDX;
@@ -231,6 +245,7 @@ static int IsMMX( void )
 		return qtrue;
 	return qfalse;
 }
+#endif // id386 (x86 CPUID / feature-probe helpers)
 
 int Sys_GetProcessorId( void )
 {

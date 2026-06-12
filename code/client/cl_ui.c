@@ -759,7 +759,7 @@ static int FloatAsInt( float f ) {
 
 void *VM_ArgPtr( int intValue );
 #define	VMA(x) VM_ArgPtr(args[x])
-#define	VMF(x)	((float *)args)[x]
+#define	VMF(x)	(*(float *)&args[x])
 
 /*
 ====================
@@ -768,7 +768,7 @@ CL_UISystemCalls
 The ui module is making a system call
 ====================
 */
-int CL_UISystemCalls( int *args ) {
+intptr_t CL_UISystemCalls( intptr_t *args ) {
 	switch( args[0] ) {
 	case UI_ERROR:
 		Com_Error( ERR_DROP, "%s", VMA(1) );
@@ -1043,7 +1043,7 @@ int CL_UISystemCalls( int *args ) {
 		return 0;
 
 	case UI_STRNCPY:
-		return (int)strncpy( VMA(1), VMA(2), args[3] );
+		return (intptr_t)strncpy( VMA(1), VMA(2), args[3] );
 
 	case UI_SIN:
 		return FloatAsInt( sin( VMF(1) ) );
@@ -1154,13 +1154,16 @@ void CL_InitUI( void ) {
 	else {
 		interpret = Cvar_VariableValue( "vm_ui" );
 	}
+	Com_BootLog( "CL_InitUI: before VM_Create(ui)" );
 	uivm = VM_Create( "ui", CL_UISystemCalls, interpret );
 	if ( !uivm ) {
 		Com_Error( ERR_FATAL, "VM_Create on UI failed" );
 	}
+	Com_BootLog( "CL_InitUI: after VM_Create(ui); before UI_GETAPIVERSION" );
 
 	// sanity check
 	v = VM_Call( uivm, UI_GETAPIVERSION );
+	Com_BootLog( "CL_InitUI: after UI_GETAPIVERSION; before UI_INIT" );
 	if (v == UI_OLD_API_VERSION) {
 //		Com_Printf(S_COLOR_YELLOW "WARNING: loading old Quake III Arena User Interface version %d\n", v );
 		// init for this gamestate

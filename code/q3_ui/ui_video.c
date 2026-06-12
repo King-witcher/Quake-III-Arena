@@ -272,6 +272,7 @@ typedef struct {
 	menulist_s		driver;
 	menulist_s		renderapi;
 	menulist_s		antialiasing;
+	menulist_s		dlss;
 	menulist_s		anisotropic;
 	menuslider_s	tq;
 	menulist_s  	fs;
@@ -301,6 +302,7 @@ typedef struct
 	qboolean extensions;
 	int renderapi;
 	int antialiasing;
+	int dlss;
 	int anisotropic;
 } InitialVideoOptions_s;
 
@@ -311,6 +313,9 @@ static graphicsoptions_t		s_graphicsoptions;
 // offers "Off" (the menu swaps the list based on the selected Render API).
 static const char *aa_names_gl[] = { "Off", 0 };
 static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 4x", 0 };
+// DLSS is Vulkan + RTX only.  Under OpenGL the control offers only "Off".
+static const char *dlss_names_gl[] = { "Off", 0 };
+static const char *dlss_names_vk[] = { "Off", "Quality", "Balanced", "Performance", "Ultra Performance", 0 };
 
 // Anisotropic texture-filter levels.  Vulkan-only (the legacy GL backend does not set
 // sampler anisotropy here), so OpenGL only ever offers "Off".  The curvalue index maps
@@ -351,6 +356,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.driver      = s_graphicsoptions.driver.curvalue;
 	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
 	s_ivo.antialiasing = s_graphicsoptions.antialiasing.curvalue;
+	s_ivo.dlss = s_graphicsoptions.dlss.curvalue;
 	s_ivo.anisotropic = s_graphicsoptions.anisotropic.curvalue;
 	s_ivo.mode        = s_graphicsoptions.mode.curvalue;
 	s_ivo.fullscreen  = s_graphicsoptions.fs.curvalue;
@@ -441,11 +447,16 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.antialiasing.itemnames = aa_names_gl;
 		s_graphicsoptions.antialiasing.numitems  = 1;
 		s_graphicsoptions.antialiasing.curvalue  = 0;
+		s_graphicsoptions.dlss.itemnames = dlss_names_gl;
+		s_graphicsoptions.dlss.numitems  = 1;
+		s_graphicsoptions.dlss.curvalue  = 0;
 	}
 	else
 	{
 		s_graphicsoptions.antialiasing.itemnames = aa_names_vk;
 		s_graphicsoptions.antialiasing.numitems  = 3;
+		s_graphicsoptions.dlss.itemnames = dlss_names_vk;
+		s_graphicsoptions.dlss.numitems  = 5;
 	}
 
 	// Anisotropic filtering is Vulkan-only too: OpenGL offers only "Off".
@@ -499,6 +510,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
+	if ( s_ivo.dlss != s_graphicsoptions.dlss.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
 	if ( s_ivo.anisotropic != s_graphicsoptions.anisotropic.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
@@ -548,6 +563,7 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	trap_Cvar_Set( "r_glDriver", ( char * ) s_drivers[s_graphicsoptions.driver.curvalue] );
 	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
 	trap_Cvar_SetValue( "r_antialiasing", s_graphicsoptions.antialiasing.curvalue );
+	trap_Cvar_SetValue( "r_dlss", s_graphicsoptions.dlss.curvalue );
 	{
 		int aidx = s_graphicsoptions.anisotropic.curvalue;
 		if ( aidx < 0 || aidx > 3 ) {
@@ -713,6 +729,12 @@ static void GraphicsOptions_SetMenuItems( void )
 		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
 		// FXAA/SSAA are Vulkan-only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.antialiasing.curvalue = 0;
+	}
+	s_graphicsoptions.dlss.curvalue = trap_Cvar_VariableValue("r_dlss");
+	if ( s_graphicsoptions.dlss.curvalue < 0 || s_graphicsoptions.dlss.curvalue > 4
+		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
+		// DLSS is Vulkan + RTX only, so force Off under OpenGL (and on bad values)
+		s_graphicsoptions.dlss.curvalue = 0;
 	}
 	{
 		// map the r_textureAnisotropy ratio (1/2/4/8) back to a spin index
@@ -1006,6 +1028,17 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.antialiasing.itemnames     = aa_names_vk;
 	y += BIGCHAR_HEIGHT+2;
 
+	// references/modifies "r_dlss" (0 = Off, 1 = Quality, 2 = Balanced,
+	// 3 = Performance, 4 = Ultra Performance; Vulkan + RTX only).  Initialised with
+	// the Vulkan list so SpinControl_Init sizes for the longest label.
+	s_graphicsoptions.dlss.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.dlss.generic.name  = "NVIDIA DLSS:";
+	s_graphicsoptions.dlss.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.dlss.generic.x     = 400;
+	s_graphicsoptions.dlss.generic.y     = y;
+	s_graphicsoptions.dlss.itemnames     = dlss_names_vk;
+	y += BIGCHAR_HEIGHT+2;
+
 	// references/modifies "r_textureAnisotropy" (1 = Off, 2/4/8 = ratio; Vulkan-only).
 	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
 	// GraphicsOptions_UpdateMenuItems swaps it to aniso_names_gl under OpenGL.
@@ -1147,6 +1180,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.renderapi );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.antialiasing );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.dlss );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.anisotropic );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.mode );

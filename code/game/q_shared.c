@@ -881,9 +881,9 @@ void QDECL Com_sprintf( char *dest, int size, const char *fmt, ...) {
 	if (len >= size) {
 		Com_Printf ("Com_sprintf: overflow of %i in %i\n", len, size);
 #ifdef	_DEBUG
-		__asm {
-			int 3;
-		}
+		// was inline "__asm { int 3 }" (x86 only); __debugbreak() is the
+		// portable MSVC intrinsic and compiles for both x86 and x64.
+		__debugbreak();
 #endif
 	}
 	Q_strncpyz (dest, bigbuffer, size );

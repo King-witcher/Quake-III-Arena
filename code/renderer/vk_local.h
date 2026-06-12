@@ -71,7 +71,9 @@ typedef enum {
 typedef enum {
 	VK_AA_OFF = 0,
 	VK_AA_FXAA = 1,
-	VK_AA_SSAA = 2
+	VK_AA_SSAA = 2,
+	VK_AA_DLSS = 3				// scene rendered at a sub-display res into the offscreen,
+								// upscaled to the swapchain by DLSS (or a linear blit fallback)
 } vkAAMode_t;
 
 // Per-image GPU resources; image_t.vkData points at one of these.
@@ -185,7 +187,14 @@ typedef struct {
 	int						aaMode;			// vkAAMode_t
 	int						ssaaFactor;		// SSAA integer factor per axis (1 otherwise)
 	float					ssaaScale;		// = ssaaFactor (float, for coordinate scaling)
-	VkExtent2D				renderExtent;	// scene render-target size (= extent * ssaaScale)
+	VkExtent2D				renderExtent;	// scene render-target size (SSAA = extent*factor, DLSS = sub-display)
+
+	// DLSS upscaling (read once from r_dlss at swapchain create).  When non-zero
+	// the scene renders into the (lower-res) offscreen target at renderExtent and
+	// is upscaled to the swapchain in VK_EndFrame -- by the NGX network when the
+	// SDK is present, otherwise by a plain linear blit.  See vk_dlss.c.
+	int						dlssMode;		// vkDlssMode_t (0 = off)
+	int						dlssFrame;		// frame counter driving the jitter sequence
 
 	// offscreen scene color target (FXAA/SSAA): the scene renders here instead of
 	// straight to the swapchain.  Per-frame-in-flight, like the depth buffer, so

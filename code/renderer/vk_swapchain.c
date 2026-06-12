@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // are no VkRenderPass / VkFramebuffer objects to manage.
 //
 #include "vk_local.h"
+#include "vk_dlss.h"
 
 /*
 ================
@@ -330,6 +331,32 @@ qboolean VK_CreateSwapchain( void ) {
 	vk.ssaaScale = (float)vk.ssaaFactor;
 	vk.renderExtent.width  = vk.extent.width  * vk.ssaaFactor;
 	vk.renderExtent.height = vk.extent.height * vk.ssaaFactor;
+
+	// DLSS upscaling takes precedence over plain AA: render the scene into a
+	// sub-display offscreen target (renderExtent) and upscale to the swapchain in
+	// VK_EndFrame.  We reuse the offscreen plumbing; the resolve is the NGX neural
+	// evaluate when the SDK is present, otherwise a linear blit (still a real win
+	// since far fewer pixels are shaded).  See vk_dlss.c / DLSS_VULKAN_REFERENCE.md.
+	vk.dlssMode = r_dlss ? r_dlss->integer : 0;
+	if ( vk.dlssMode < VK_DLSS_OFF || vk.dlssMode > VK_DLSS_ULTRA_PERF ) {
+		vk.dlssMode = VK_DLSS_OFF;
+	}
+	if ( vk.dlssMode != VK_DLSS_OFF ) {
+		uint32_t rw, rh;
+		if ( VK_DLSS_RenderResolution( vk.dlssMode, vk.extent.width, vk.extent.height, &rw, &rh ) ) {
+			vk.aaMode = VK_AA_DLSS;
+			vk.ssaaFactor = 1;
+			vk.renderExtent.width  = rw;
+			vk.renderExtent.height = rh;
+			vk.ssaaScale = (float)rw / (float)vk.extent.width;	// < 1 (sub-display)
+			VK_DLSS_Init();
+			ri.Printf( PRINT_ALL, "...DLSS %s: rendering %ux%u -> %ux%u%s\n",
+				VK_DLSS_ModeName( vk.dlssMode ), rw, rh, vk.extent.width, vk.extent.height,
+				VK_DLSS_Available() ? " (NGX neural)" : " (linear upscale)" );
+		} else {
+			vk.dlssMode = VK_DLSS_OFF;
+		}
+	}
 
 	desiredImages = caps.minImageCount + 1;
 	if ( caps.maxImageCount > 0 && desiredImages > caps.maxImageCount ) {

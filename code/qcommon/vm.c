@@ -324,20 +324,20 @@ Dlls will call this directly
  
 ============
 */
-int QDECL VM_DllSyscall( int arg, ... ) {
+intptr_t QDECL VM_DllSyscall( intptr_t arg, ... ) {
 #if ((defined __linux__) && (defined __powerpc__))
   // rcg010206 - see commentary above
-  int args[16];
+  intptr_t args[16];
   int i;
   va_list ap;
-  
+
   args[0] = arg;
-  
+
   va_start(ap, arg);
   for (i = 1; i < sizeof (args) / sizeof (args[i]); i++)
-    args[i] = va_arg(ap, int);
+    args[i] = va_arg(ap, intptr_t);
   va_end(ap);
-  
+
   return currentVM->systemCall( args );
 #else // original id code
 	return currentVM->systemCall( &arg );
@@ -362,9 +362,9 @@ vm_t *VM_Restart( vm_t *vm ) {
 	// DLL's can't be restarted in place
 	if ( vm->dllHandle ) {
 		char	name[MAX_QPATH];
-	    int			(*systemCall)( int *parms );
-		
-		systemCall = vm->systemCall;	
+	    intptr_t	(*systemCall)( intptr_t *parms );
+
+		systemCall = vm->systemCall;
 		Q_strncpyz( name, vm->name, sizeof( name ) );
 
 		VM_Free( vm );
@@ -432,7 +432,7 @@ it will attempt to load as a system dll
 
 #define	STACK_SIZE	0x20000
 
-vm_t *VM_Create( const char *module, int (*systemCalls)(int *), 
+vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 				vmInterpret_t interpret ) {
 	vm_t		*vm;
 	vmHeader_t	*header;
@@ -604,7 +604,7 @@ void VM_Clear(void) {
 	lastVM = NULL;
 }
 
-void *VM_ArgPtr( int intValue ) {
+void *VM_ArgPtr( intptr_t intValue ) {
 	if ( !intValue ) {
 		return NULL;
 	}
@@ -620,7 +620,7 @@ void *VM_ArgPtr( int intValue ) {
 	}
 }
 
-void *VM_ExplicitArgPtr( vm_t *vm, int intValue ) {
+void *VM_ExplicitArgPtr( vm_t *vm, intptr_t intValue ) {
 	if ( !intValue ) {
 		return NULL;
 	}
@@ -665,9 +665,9 @@ locals from sp
 #define	MAX_STACK	256
 #define	STACK_MASK	(MAX_STACK-1)
 
-int	QDECL VM_Call( vm_t *vm, int callnum, ... ) {
+intptr_t	QDECL VM_Call( vm_t *vm, int callnum, ... ) {
 	vm_t	*oldVM;
-	int		r;
+	intptr_t	r;
 	int i;
 	int args[16];
 	va_list ap;
@@ -827,9 +827,25 @@ void VM_LogSyscalls( int *args ) {
 
 
 #ifdef oDLL_ONLY // bk010215 - for DLL_ONLY dedicated servers/builds w/o VM
-int	VM_CallCompiled( vm_t *vm, int *args ) {
-  return(0); 
+intptr_t	VM_CallCompiled( vm_t *vm, int *args ) {
+  return(0);
 }
 
 void VM_Compile( vm_t *vm, vmHeader_t *header ) {}
 #endif // DLL_ONLY
+
+#if !id386
+// 64-bit / non-x86 targets: the x86 JIT (vm_x86.c) is excluded from the build,
+// so QVM bytecode always runs through the portable interpreter.  VM_Compile is
+// the entry the loader calls when VMI_COMPILED was requested; we fall back to
+// preparing the interpreter and clearing the "compiled" flag so VM_Call routes
+// to VM_CallInterpreted.  Native game DLLs (VMI_NATIVE) never touch this path.
+void VM_Compile( vm_t *vm, vmHeader_t *header ) {
+	vm->compiled = qfalse;
+	VM_PrepareInterpreter( vm, header );
+}
+
+intptr_t	VM_CallCompiled( vm_t *vm, int *args ) {
+	return VM_CallInterpreted( vm, args );
+}
+#endif // !id386

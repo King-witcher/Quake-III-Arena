@@ -2144,12 +2144,15 @@ void CL_StartHunkUsers( void ) {
 
 	if ( !cls.rendererStarted ) {
 		cls.rendererStarted = qtrue;
+		Com_BootLog( "  before CL_InitRenderer" );
 		CL_InitRenderer();
+		Com_BootLog( "  after CL_InitRenderer" );
 	}
 
 	if ( !cls.soundStarted ) {
 		cls.soundStarted = qtrue;
 		S_Init();
+		Com_BootLog( "  after S_Init" );
 	}
 
 	if ( !cls.soundRegistered ) {
@@ -2159,7 +2162,9 @@ void CL_StartHunkUsers( void ) {
 
 	if ( !cls.uiStarted ) {
 		cls.uiStarted = qtrue;
+		Com_BootLog( "  before CL_InitUI" );
 		CL_InitUI();
+		Com_BootLog( "  after CL_InitUI" );
 	}
 }
 

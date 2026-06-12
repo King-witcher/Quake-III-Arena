@@ -240,9 +240,7 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		// com_noErrorInterrupt is not registered until late in Com_Init; guard
 		// against a NULL deref when an error fires earlier (e.g. during FS init)
 		if ( com_noErrorInterrupt && !com_noErrorInterrupt->integer ) {
-			__asm {
-				int 0x03
-			}
+			__debugbreak();		// was "__asm { int 0x03 }" (x86 only)
 		}
 	}
 #endif
@@ -1528,8 +1526,9 @@ void Com_InitHunkMemory( void ) {
 	if ( !s_hunkData ) {
 		Com_Error( ERR_FATAL, "Hunk data failed to allocate %i megs", s_hunkTotal / (1024*1024) );
 	}
-	// cacheline align
-	s_hunkData = (byte *) ( ( (int)s_hunkData + 31 ) & ~31 );
+	// cacheline align (use intptr_t: casting the 64-bit base through int
+	// truncates the pointer and corrupts the whole hunk on x64)
+	s_hunkData = (byte *) ( ( (intptr_t)s_hunkData + 31 ) & ~31 );
 	Hunk_Clear();
 
 	Cmd_AddCommand( "meminfo", Com_Meminfo_f );
@@ -2350,9 +2349,24 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
 Com_Init
 =================
 */
+// Opt-in early-boot tracer: set the Q3_BOOTLOG env var to a file path to trace
+// engine bring-up before the console/log subsystem exists (used to pin down the
+// 32->64-bit init crashes).  A no-op unless the env var is set, so it is inert
+// in normal play.
+void Com_BootLog( const char *m ) {
+	const char *path = getenv( "Q3_BOOTLOG" );
+	FILE *f;
+	if ( !path || !path[0] ) {
+		return;
+	}
+	f = fopen( path, "a" );
+	if ( f ) { fputs( m, f ); fputc( '\n', f ); fclose( f ); }
+}
+
 void Com_Init( char *commandLine ) {
 	char	*s;
 
+	Com_BootLog( "Com_Init: enter" );
 	Com_Printf( "%s %s %s\n", Q3_VERSION, CPUSTRING, __DATE__ );
 
 	if ( setjmp (abortframe) ) {
@@ -2374,17 +2388,21 @@ void Com_Init( char *commandLine ) {
 
 	Com_InitZoneMemory();
 	Cmd_Init ();
+	Com_BootLog( "after Com_InitZoneMemory/Cmd_Init" );
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
 
 	// get the developer cvar set as early as possible
 	Com_StartupVariable( "developer" );
+	Com_BootLog( "after Com_StartupVariable" );
 
 	// done early so bind command exists
 	CL_InitKeyCommands();
+	Com_BootLog( "after CL_InitKeyCommands; before FS_InitFilesystem" );
 
 	FS_InitFilesystem ();
+	Com_BootLog( "after FS_InitFilesystem" );
 
 	Com_InitJournaling();
 
@@ -2410,6 +2428,7 @@ void Com_Init( char *commandLine ) {
 #endif
 	// allocate the stack based hunk allocator
 	Com_InitHunkMemory();
+	Com_BootLog( "after Com_InitHunkMemory" );
 
 	// if any archived cvars are modified after this, we will trigger a writing
 	// of the config file
@@ -2463,14 +2482,20 @@ void Com_Init( char *commandLine ) {
 	s = va("%s %s %s", Q3_VERSION, CPUSTRING, __DATE__ );
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
 
+	Com_BootLog( "before Sys_Init" );
 	Sys_Init();
+	Com_BootLog( "after Sys_Init" );
 	Netchan_Init( Com_Milliseconds() & 0xffff );	// pick a port value that should be nice and random
 	VM_Init();
+	Com_BootLog( "after VM_Init" );
 	SV_Init();
+	Com_BootLog( "after SV_Init" );
 
 	com_dedicated->modified = qfalse;
 	if ( !com_dedicated->integer ) {
+		Com_BootLog( "before CL_Init" );
 		CL_Init();
+		Com_BootLog( "after CL_Init" );
 		Sys_ShowConsole( com_viewlog->integer, qfalse );
 	}
 
@@ -2494,7 +2519,9 @@ void Com_Init( char *commandLine ) {
 	// start in full screen ui mode
 	Cvar_Set("r_uiFullScreen", "1");
 
+	Com_BootLog( "before CL_StartHunkUsers" );
 	CL_StartHunkUsers();
+	Com_BootLog( "after CL_StartHunkUsers" );
 
 	// make sure single player is off by default
 	Cvar_Set("ui_singlePlayerActive", "0");

@@ -1691,8 +1691,11 @@ static pack_t *FS_LoadZipFile( char *zipfile, const char *basename )
 
 	fs_numHeaderLongs = 0;
 
+	Com_BootLog( zipfile );
 	uf = unzOpen(zipfile);
+	Com_BootLog( "  unzOpen ok" );
 	err = unzGetGlobalInfo (uf,&gi);
+	Com_BootLog( "  unzGetGlobalInfo ok" );
 
 	if (err != UNZ_OK)
 		return NULL;
@@ -2489,10 +2492,14 @@ static void FS_AddGameDirectory( const char *path, const char *dir ) {
 	fs_searchpaths = search;
 
 	// find all pak files in this directory
+	Com_BootLog( "FS_AddGameDirectory: enter" );
+	Com_BootLog( path );
+	Com_BootLog( dir );
 	pakfile = FS_BuildOSPath( path, dir, "" );
 	pakfile[ strlen(pakfile) - 1 ] = 0;	// strip the trailing slash
 
 	pakfiles = Sys_ListFiles( pakfile, ".pk3", NULL, &numfiles, qfalse );
+	Com_BootLog( "FS_AddGameDirectory: after Sys_ListFiles" );
 
 	// sort them so that later alphabetic matches override
 	// earlier ones.  This makes pak1.pk3 override pak0.pk3
@@ -2503,7 +2510,8 @@ static void FS_AddGameDirectory( const char *path, const char *dir ) {
 		sorted[i] = pakfiles[i];
 	}
 
-	qsort( sorted, numfiles, 4, paksort );
+	qsort( sorted, numfiles, sizeof( char * ), paksort );	// was hardcoded 4; pointers are 8 bytes on x64
+	Com_BootLog( "FS_AddGameDirectory: after qsort, entering load loop" );
 
 	for ( i = 0 ; i < numfiles ; i++ ) {
 		pakfile = FS_BuildOSPath( path, dir, sorted[i] );
@@ -3252,10 +3260,13 @@ void FS_InitFilesystem( void ) {
 	Com_StartupVariable( "fs_restrict" );
 
 	// try to start up normally
+	Com_BootLog( "FS: before FS_Startup" );
 	FS_Startup( BASEGAME );
+	Com_BootLog( "FS: after FS_Startup" );
 
 	// see if we are going to allow add-ons
 	FS_SetRestrictions();
+	Com_BootLog( "FS: after FS_SetRestrictions; before default.cfg read" );
 
 	// if we can't find default.cfg, assume that the paths are
 	// busted and error out now, rather than getting an unreadable

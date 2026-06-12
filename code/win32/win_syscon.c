@@ -416,7 +416,9 @@ void Sys_CreateConsole( void )
 												g_wv.hInstance, NULL );
 	SendMessage( s_wcd.hwndBuffer, WM_SETFONT, ( WPARAM ) s_wcd.hfBufferFont, 0 );
 
-	s_wcd.SysInputLineWndProc = ( WNDPROC ) SetWindowLong( s_wcd.hwndInputLine, GWL_WNDPROC, ( long ) InputLineWndProc );
+	// SetWindowLongPtr/GWLP_WNDPROC are the pointer-width-safe forms (work on
+	// both Win32 and x64); the old SetWindowLong/GWL_WNDPROC truncate on x64.
+	s_wcd.SysInputLineWndProc = ( WNDPROC ) SetWindowLongPtr( s_wcd.hwndInputLine, GWLP_WNDPROC, ( LONG_PTR ) InputLineWndProc );
 	SendMessage( s_wcd.hwndInputLine, WM_SETFONT, ( WPARAM ) s_wcd.hfBufferFont, 0 );
 
 	ShowWindow( s_wcd.hWnd, SW_SHOWDEFAULT);

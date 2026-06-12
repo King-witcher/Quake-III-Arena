@@ -539,6 +539,13 @@ void VK_EndFrame( void ) {
 		VK_ResolveFXAA();
 	} else if ( vk.aaMode == VK_AA_SSAA ) {
 		VK_ResolveSSAA();
+	} else if ( vk.aaMode == VK_AA_DLSS ) {
+		// DLSS rendered the scene into a SUB-display offscreen.  The fullscreen
+		// FXAA pass samples it through a linear sampler, upscaling it to the
+		// swapchain (bilinear + edge smoothing) -- the SDK-free fallback.
+		// UPGRADE PATH: when an NGX feature is live and a render-res motion-vector
+		// buffer is produced, call VK_DLSS_Evaluate(...) here instead (see vk_dlss.c).
+		VK_ResolveFXAA();
 	}
 	// all resolve paths (and Off) leave the swapchain in COLOR_ATTACHMENT_OPTIMAL
 	swapLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;

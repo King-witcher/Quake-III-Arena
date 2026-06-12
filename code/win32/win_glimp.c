@@ -1363,12 +1363,12 @@ void GLimp_Init( void )
 		ri.Error( ERR_FATAL, "GLimp_Init() - incorrect operating system\n" );
 	}
 
-	// save off hInstance and wndproc
+	// save off hInstance and wndproc (full pointer width; %i truncated on x64)
 	cv = ri.Cvar_Get( "win_hinstance", "", 0 );
-	sscanf( cv->string, "%i", (int *)&g_wv.hInstance );
+	sscanf( cv->string, "%p", (void **)&g_wv.hInstance );
 
 	cv = ri.Cvar_Get( "win_wndproc", "", 0 );
-	sscanf( cv->string, "%i", (int *)&glw_state.wndproc );
+	sscanf( cv->string, "%p", (void **)&glw_state.wndproc );
 
 	r_allowSoftwareGL = ri.Cvar_Get( "r_allowSoftwareGL", "0", CVAR_LATCH );
 	r_maskMinidriver = ri.Cvar_Get( "r_maskMinidriver", "0", CVAR_LATCH );
