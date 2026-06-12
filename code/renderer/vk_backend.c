@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // implementation.
 //
 #include "vk_local.h"
+#include "vk_raytrace.h"
 
 #define VK_TIMEOUT_NS	( (uint64_t)1000000000 * 5 )	// 5s acquire/fence timeout
 
@@ -135,7 +136,7 @@ void VK_BeginFrame( void ) {
 	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
 	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
 	// viewport and are sized to renderExtent (= swapchain extent, or 2x under SSAA).
-	if ( vk.aaMode != VK_AA_OFF ) {
+	if ( vk.aaMode != VK_AA_OFF || vk.rtxEnabled ) {
 		colorImage = vk.offscreenImage[frame];
 		colorView  = vk.offscreenView[frame];
 	} else {
@@ -542,8 +543,11 @@ void VK_EndFrame( void ) {
 	// resolve the offscreen scene color into the swapchain (FXAA = shader pass,
 	// SSAA = downsampling blit); Off rendered straight into the swapchain already.
 	if ( vk.on2DTarget ) {
-		// DLSS: the scene was already upscaled to the swapchain in VK_Set2D and the 2D
-		// overlay was drawn straight onto it at native res -- nothing left to resolve.
+		// DLSS/RT: the scene was already resolved to the swapchain in VK_Set2D and the
+		// 2D overlay drawn straight onto it at native res -- nothing left to resolve.
+	} else if ( vk.rtxEnabled ) {
+		// ray tracing drew no 2D this frame (rare): run the deferred lighting + blit now
+		VK_RT_Resolve();
 	} else if ( vk.aaMode == VK_AA_FXAA ) {
 		VK_ResolveFXAA();
 	} else if ( vk.aaMode == VK_AA_SSAA ) {
@@ -697,9 +701,13 @@ void VK_Set2D( void ) {
 		// 2D draw of the frame, resolve/upscale it onto the swapchain and switch to
 		// drawing the 2D overlay directly at native resolution (crisp text), instead of
 		// drawing 2D into the low-res offscreen and upscaling it with the scene.
-		if ( vk.aaMode == VK_AA_DLSS && !vk.on2DTarget ) {
+		if ( ( vk.aaMode == VK_AA_DLSS || vk.rtxEnabled ) && !vk.on2DTarget ) {
 			qvkCmdEndRendering( vk.cmd );		// end the 3D offscreen pass
-			VK_ResolveFXAA();					// offscreen(renderExtent) -> swapchain(extent)
+			if ( vk.rtxEnabled ) {
+				VK_RT_Resolve();				// deferred ray-traced lighting + offscreen->swapchain
+			} else {
+				VK_ResolveFXAA();				// DLSS: offscreen(renderExtent) -> swapchain(extent)
+			}
 			VK_Begin2DPass();					// native-res swapchain pass for the 2D
 			vk.on2DTarget = qtrue;
 			vk.curExtent = vk.extent;
@@ -765,6 +773,13 @@ void VK_SetViewport( void ) {
 	int			yTop = glConfig.vidHeight - backEnd.viewParms.viewportY - h;	// top-left origin
 
 	Com_Memcpy( vk.draw.projection, backEnd.viewParms.projectionMatrix, sizeof( vk.draw.projection ) );
+
+	// snapshot the 3D view for the deferred ray-tracing pass (depth -> world recon).
+	// The last 3D view set before the 2D overlay is the main scene view.
+	if ( vk.rtxEnabled ) {
+		VK_RT_SetCamera( backEnd.viewParms.projectionMatrix,
+			backEnd.viewParms.world.modelMatrix, backEnd.viewParms.or.origin );
+	}
 
 	if ( !vk.frameStarted ) {
 		return;

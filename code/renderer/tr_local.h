@@ -105,6 +105,10 @@ typedef struct image_s {
 	qboolean	allowPicmip;
 	int			wrapClampMode;		// GL_CLAMP or GL_REPEAT
 
+	float		averageColor[3];	// alpha-weighted mean of the source RGB (0..1); the
+									// ray-traced lighting path uses it as the surface albedo
+									// for indirect / colour-bleed contributions
+
 	void		*vkData;			// Vulkan backend: pointer to vkimage_t (NULL under GL)
 
 	struct image_s*	next;
@@ -1024,6 +1028,11 @@ extern cvar_t	*r_renderapi;			// 0 = OpenGL (default), 1 = Vulkan; latched, appl
 extern cvar_t	*r_antialiasing;		// 0 = Off, 1 = FXAA, 2 = SSAA 2x, 3 = SSAA 4x; Vulkan-only; latched
 extern cvar_t	*r_textureAnisotropy;	// 1 = Off, 2/4/8 = anisotropic ratio; Vulkan-only; latched
 extern cvar_t	*r_dlss;				// 0 = Off, 1 = Quality, 2 = Balanced, 3 = Performance, 4 = Ultra Perf; Vulkan-only; latched
+extern cvar_t	*r_raytracing;			// 0 = Off, 1 = On; hardware ray-traced lighting; Vulkan+RTX only; latched
+extern cvar_t	*r_rtGI;				// 0/1 enable 1-bounce diffuse GI (color bleeding)
+extern cvar_t	*r_rtGIIntensity;		// scales the indirect (color-bleed) contribution
+extern cvar_t	*r_rtAmbientScale;		// scales the lightmap "global base" so nothing is fully black
+extern cvar_t	*r_rtRays;				// hemisphere rays per pixel for the GI gather (quality/perf)
 extern cvar_t	*r_mode;				// video mode
 extern cvar_t	*r_fullscreen;
 extern cvar_t	*r_gamma;
@@ -1179,6 +1188,13 @@ void		RE_BeginFrame( stereoFrame_t stereoFrame );
 void		RE_BeginRegistration( glconfig_t *glconfig );
 void		RE_LoadWorldMap( const char *mapname );
 void		RE_SetWorldVisData( const byte *vis );
+
+// Hardware ray tracing (vk_raytrace.c).  Declared here (VK-type-free) so the
+// API-agnostic BSP loader can trigger the world acceleration-structure build
+// without pulling in the Vulkan headers.  Both are no-ops unless the Vulkan
+// backend is active with ray tracing enabled.
+void		VK_RT_BuildWorld( void );		// (re)build the world BLAS/TLAS from tr.world
+void		VK_RT_FreeWorld( void );		// release the world acceleration structures
 qhandle_t	RE_RegisterModel( const char *name );
 qhandle_t	RE_RegisterSkin( const char *name );
 void		RE_Shutdown( qboolean destroyWindow );

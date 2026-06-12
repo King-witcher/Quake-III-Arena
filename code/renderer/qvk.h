@@ -146,7 +146,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 	X( vkDestroyPipeline )                      \
 	X( vkCreatePipelineCache )                  \
 	X( vkDestroyPipelineCache )                 \
-	X( vkGetPipelineCacheData )
+	X( vkGetPipelineCacheData )                 \
+	/* compute + buffer device address: all core in Vulkan 1.3, so they always   */ \
+	/* resolve.  The ray-query / acceleration-structure KHR entry points are NOT  */ \
+	/* listed here -- they exist only when the optional extensions are enabled, so */ \
+	/* vk_raytrace.c resolves them separately and tolerates their absence.         */ \
+	X( vkCmdDispatch )                          \
+	X( vkCreateComputePipelines )               \
+	X( vkGetBufferDeviceAddress )
 
 // The bootstrap entry point, obtained from vulkan-1.dll with GetProcAddress
 // in the platform layer (win_vk.c).  Everything else hangs off of it.

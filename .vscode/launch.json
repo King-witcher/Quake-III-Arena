@@ -36,7 +36,7 @@
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
                 "+set", "vm_ui", "0",
-                "+devmap", "q3dm1",
+                "+devmap", "q3dm0",
                 "+wait", "10",
                 "+give", "all"
             ],
@@ -58,7 +58,7 @@
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
                 "+set", "vm_ui", "0",
-                "+devmap", "q3dm1",
+                "+devmap", "q3dm0",
                 "+wait", "10",
                 "+give", "all"
             ],
@@ -80,7 +80,7 @@
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
                 "+set", "vm_ui", "1",
-                "+devmap", "q3dm1",
+                "+devmap", "q3dm0",
                 "+wait", "10",
                 "+give", "all"
             ],
@@ -101,7 +101,7 @@
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
                 "+set", "vm_ui", "1",
-                "+devmap", "q3dm1",
+                "+devmap", "q3dm0",
                 "+wait", "10",
                 "+give", "all"
             ],

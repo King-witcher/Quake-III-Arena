@@ -36,6 +36,11 @@ cvar_t	*r_renderapi;
 cvar_t	*r_antialiasing;
 cvar_t	*r_textureAnisotropy;
 cvar_t	*r_dlss;
+cvar_t	*r_raytracing;
+cvar_t	*r_rtGI;
+cvar_t	*r_rtGIIntensity;
+cvar_t	*r_rtAmbientScale;
+cvar_t	*r_rtRays;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -990,6 +995,18 @@ void R_Register( void )
 	// NGX runtime present (see renderer/nvsdk_ngx/DLSS_VULKAN_REFERENCE.md); otherwise
 	// it transparently falls back to a plain upscale.  Latched like r_antialiasing.
 	r_dlss = ri.Cvar_Get( "r_dlss", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// Hardware ray-traced lighting (Vulkan + RTX only).  0 = Off, 1 = On.  Latched:
+	// turning it on requests the ray-query / acceleration-structure device extensions
+	// on the next vid_restart.  Falls back silently to the normal raster path when the
+	// GPU has no ray-tracing support.  The lighting model keeps the baked lightmaps as
+	// a dimmed global ambient base and adds ray-traced dynamic-light shadows plus a
+	// 1-bounce diffuse colour-bleed on top (see vk_raytrace.c).
+	r_raytracing = ri.Cvar_Get( "r_raytracing", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// Live tuning knobs for the RT lighting model (not latched -- take effect next frame).
+	r_rtGI           = ri.Cvar_Get( "r_rtGI",           "1",    CVAR_ARCHIVE );
+	r_rtGIIntensity  = ri.Cvar_Get( "r_rtGIIntensity",  "1.5",  CVAR_ARCHIVE );
+	r_rtAmbientScale = ri.Cvar_Get( "r_rtAmbientScale", "0.75", CVAR_ARCHIVE );
+	r_rtRays         = ri.Cvar_Get( "r_rtRays",         "6",    CVAR_ARCHIVE );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );

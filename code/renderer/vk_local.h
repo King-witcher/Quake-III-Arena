@@ -191,6 +191,14 @@ typedef struct {
 	int						dlssMode;		// vkDlssMode_t (0 = off)
 	int						dlssFrame;		// frame counter driving the jitter sequence
 
+	// hardware ray tracing (vk_raytrace.c).  rtxSupported is a pure device-capability
+	// query (ray query + acceleration structure + buffer device address), independent
+	// of the cvar; rtxEnabled is rtxSupported AND r_raytracing -- only then are the RT
+	// device extensions/features requested and the RT subsystem brought up.  See the
+	// r_raytracing gating in VK_SelectPhysicalDevice / VK_CreateDevice.
+	qboolean				rtxSupported;
+	qboolean				rtxEnabled;
+
 	// "current render target" geometry, so the per-draw viewport code is agnostic
 	// to which target it is drawing into.  During the 3D scene pass these track the
 	// (sub/super-sampled) offscreen; for DLSS, VK_Set2D resolves the offscreen to the

@@ -1,0 +1,163 @@
+#version 460
+// rt_light.comp -- deferred ray-traced lighting (VK_KHR_ray_query).
+//
+// One invocation per screen pixel.  Reconstructs the world position from the
+// scene depth buffer and a geometric normal from neighbouring depths, then:
+//   * keeps the rasterised lightmap colour as a dimmed GLOBAL AMBIENT BASE,
+//   * adds ray-traced shadows for the dynamic lights, and
+//   * adds a 1-bounce diffuse indirect term (colour bleeding) gathered from the
+//     world acceleration structure.
+// Result is written to an HDR storage image that the backend blits to the
+// swapchain.  See vk_raytrace.c for the matching descriptor set + UBO.
+#extension GL_EXT_ray_query : require
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout( set = 0, binding = 0 ) uniform sampler2D u_sceneColor;   // rasterised scene (lightmap base)
+layout( set = 0, binding = 1 ) uniform sampler2D u_depth;        // scene depth (0..1)
+layout( set = 0, binding = 2, rgba16f ) uniform writeonly image2D u_outColor;
+layout( set = 0, binding = 3 ) uniform accelerationStructureEXT u_tlas;
+
+struct RTVertex { vec4 pos; vec4 nrm; vec4 rad; };
+layout( set = 0, binding = 4, std430 ) readonly buffer GeoBuf { RTVertex v[]; } geo;
+layout( set = 0, binding = 5, std430 ) readonly buffer IdxBuf { uint i[]; } idxb;
+
+#define MAX_RT_DLIGHTS 32
+struct DLight { vec4 posRad; vec4 color; };     // xyz origin + w radius ; rgb colour
+layout( set = 0, binding = 6, std140 ) uniform UBO {
+	mat4   invViewProj;
+	vec4   eye;        // xyz world eye position
+	vec4   screen;     // x=width, y=height, z=1/width, w=1/height
+	vec4   p0;         // x=ambientScale, y=giIntensity, z=numGiRays, w=giEnabled
+	vec4   p1;         // x=numDlights, y=worldBuilt, z=giRayLength, w=unused
+	DLight dl[MAX_RT_DLIGHTS];
+} ubo;
+
+vec3 reconstruct( vec2 uv, float d ) {
+	vec3 ndc = vec3( uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d );
+	vec4 w = ubo.invViewProj * vec4( ndc, 1.0 );
+	return w.xyz / w.w;
+}
+
+uint hashU( uint x ) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return x; }
+float rnd( inout uint s ) { s = hashU( s ); return float( s ) * ( 1.0 / 4294967296.0 ); }
+
+// cosine-weighted hemisphere direction around n
+vec3 cosineDir( vec3 n, float u1, float u2 ) {
+	float r = sqrt( u1 );
+	float phi = 6.2831853 * u2;
+	vec3 up = abs( n.z ) < 0.999 ? vec3( 0.0, 0.0, 1.0 ) : vec3( 1.0, 0.0, 0.0 );
+	vec3 t = normalize( cross( up, n ) );
+	vec3 b = cross( n, t );
+	return normalize( t * ( r * cos( phi ) ) + b * ( r * sin( phi ) ) + n * sqrt( max( 0.0, 1.0 - u1 ) ) );
+}
+
+bool occluded( vec3 o, vec3 d, float tmax ) {
+	rayQueryEXT rq;
+	rayQueryInitializeEXT( rq, u_tlas,
+		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
+		0xFFu, o, 0.05, d, tmax );
+	while ( rayQueryProceedEXT( rq ) ) {}
+	return rayQueryGetIntersectionTypeEXT( rq, true ) != gl_RayQueryCommittedIntersectionNoneEXT;
+}
+
+// closest-hit gather: returns the hit surface's stored outgoing radiance (albedo)
+vec3 gather( vec3 o, vec3 d, float tmax ) {
+	rayQueryEXT rq;
+	rayQueryInitializeEXT( rq, u_tlas, gl_RayFlagsOpaqueEXT, 0xFFu, o, 0.05, d, tmax );
+	while ( rayQueryProceedEXT( rq ) ) {}
+	if ( rayQueryGetIntersectionTypeEXT( rq, true ) == gl_RayQueryCommittedIntersectionTriangleEXT ) {
+		uint prim = uint( rayQueryGetIntersectionPrimitiveIndexEXT( rq, true ) );
+		vec2 bc = rayQueryGetIntersectionBarycentricsEXT( rq, true );
+		uint i0 = idxb.i[ prim * 3u + 0u ];
+		uint i1 = idxb.i[ prim * 3u + 1u ];
+		uint i2 = idxb.i[ prim * 3u + 2u ];
+		return geo.v[ i0 ].rad.rgb * ( 1.0 - bc.x - bc.y )
+			 + geo.v[ i1 ].rad.rgb * bc.x
+			 + geo.v[ i2 ].rad.rgb * bc.y;
+	}
+	return vec3( 0.0 );		// escaped to sky / no hit -> no bounced colour
+}
+
+void main() {
+	ivec2 pix = ivec2( gl_GlobalInvocationID.xy );
+	int W = int( ubo.screen.x );
+	int H = int( ubo.screen.y );
+	if ( pix.x >= W || pix.y >= H ) {
+		return;
+	}
+	vec2 uv = ( vec2( pix ) + 0.5 ) * ubo.screen.zw;
+
+	vec3  base  = texelFetch( u_sceneColor, pix, 0 ).rgb;
+	float depth = texelFetch( u_depth, pix, 0 ).r;
+
+	// sky (cleared depth) or no acceleration structure -> pass the raster image through
+	if ( depth >= 1.0 || ubo.p1.y < 0.5 ) {
+		imageStore( u_outColor, pix, vec4( base, 1.0 ) );
+		return;
+	}
+
+	vec3 P = reconstruct( uv, depth );
+
+	// geometric normal from neighbouring reconstructed positions
+	ivec2 pr = ivec2( min( pix.x + 1, W - 1 ), pix.y );
+	ivec2 pd = ivec2( pix.x, min( pix.y + 1, H - 1 ) );
+	vec3 PR = reconstruct( uv + vec2( ubo.screen.z, 0.0 ), texelFetch( u_depth, pr, 0 ).r );
+	vec3 PD = reconstruct( uv + vec2( 0.0, ubo.screen.w ), texelFetch( u_depth, pd, 0 ).r );
+	vec3 N = cross( PR - P, PD - P );
+	float nl = length( N );
+	if ( nl < 1e-6 ) {
+		imageStore( u_outColor, pix, vec4( base, 1.0 ) );
+		return;
+	}
+	N /= nl;
+	if ( dot( N, ubo.eye.xyz - P ) < 0.0 ) {
+		N = -N;
+	}
+
+	float ambientScale = ubo.p0.x;
+	float giInt        = ubo.p0.y;
+	int   nGi          = int( ubo.p0.z );
+	bool  giOn         = ubo.p0.w > 0.5;
+	int   nDl          = int( ubo.p1.x );
+	float giLen        = ubo.p1.z;
+
+	vec3 Poff = P + N * 1.0;		// push off the surface (world units) to avoid self-hits
+
+	// --- direct: dynamic lights with ray-traced shadows ---
+	vec3 direct = vec3( 0.0 );
+	for ( int k = 0; k < nDl; k++ ) {
+		vec3  Lv = ubo.dl[k].posRad.xyz - P;
+		float dist = length( Lv );
+		float r = ubo.dl[k].posRad.w;
+		if ( dist >= r || dist < 1e-3 ) {
+			continue;
+		}
+		vec3  Ld = Lv / dist;
+		float ndl = max( dot( N, Ld ), 0.0 );
+		if ( ndl <= 0.0 ) {
+			continue;
+		}
+		float a = 1.0 - dist / r;
+		a = a * a;
+		if ( !occluded( Poff, Ld, dist - 1.0 ) ) {
+			direct += ubo.dl[k].color.rgb * ( ndl * a );
+		}
+	}
+
+	// --- indirect: 1-bounce diffuse colour bleeding ---
+	vec3 gi = vec3( 0.0 );
+	if ( giOn && nGi > 0 ) {
+		uint seed = hashU( uint( pix.x ) * 1973u + uint( pix.y ) * 9277u + 26699u );
+		for ( int s = 0; s < nGi; s++ ) {
+			float u1 = rnd( seed );
+			float u2 = rnd( seed );
+			gi += gather( Poff, cosineDir( N, u1, u2 ), giLen );
+		}
+		gi /= float( nGi );
+	}
+
+	// dimmed lightmap base + colour-bleed tint, plus the (additive) dynamic light
+	vec3 outc = base * ( ambientScale + giInt * gi ) + direct;
+	imageStore( u_outColor, pix, vec4( outc, 1.0 ) );
+}

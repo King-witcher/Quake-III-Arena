@@ -1858,5 +1858,9 @@ void RE_LoadWorldMap( const char *name ) {
 	tr.world = &s_worldData;
 
     ri.FS_FreeFile( buffer );
+
+	// build the ray-tracing acceleration structure from the static world geometry
+	// (no-op unless the Vulkan backend is active with ray tracing enabled)
+	VK_RT_BuildWorld();
 }
 

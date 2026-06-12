@@ -754,6 +754,28 @@ image_t *R_CreateImage( const char *name, const byte *pic, int width, int height
 	image->height = height;
 	image->wrapClampMode = glWrapClampMode;
 
+	// representative average colour of the source pixels, used by the ray-traced
+	// lighting path as the surface albedo for indirect (colour-bleed) hits.  Weight
+	// by alpha so transparent texels don't drag the mean toward black.
+	image->averageColor[0] = image->averageColor[1] = image->averageColor[2] = 1.0f;
+	if ( pic ) {
+		double	sum[3] = { 0.0, 0.0, 0.0 };
+		double	wsum = 0.0;
+		int		n = width * height, p;
+		for ( p = 0; p < n; p++ ) {
+			double w = pic[p*4+3] / 255.0;
+			sum[0] += ( pic[p*4+0] / 255.0 ) * w;
+			sum[1] += ( pic[p*4+1] / 255.0 ) * w;
+			sum[2] += ( pic[p*4+2] / 255.0 ) * w;
+			wsum   += w;
+		}
+		if ( wsum > 0.0 ) {
+			image->averageColor[0] = (float)( sum[0] / wsum );
+			image->averageColor[1] = (float)( sum[1] / wsum );
+			image->averageColor[2] = (float)( sum[2] / wsum );
+		}
+	}
+
 	// lightmaps live on TMU 1 when the active backend exposes >= 2 texture
 	// units (under GL this is exactly equivalent to qglActiveTextureARB != NULL)
 	if ( isLightmap && glConfig.maxActiveTextures >= 2 ) {

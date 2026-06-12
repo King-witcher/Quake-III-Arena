@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // returns qfalse, which makes R_Init() fall back to OpenGL.
 //
 #include "vk_local.h"
+#include "vk_raytrace.h"
 
 vk_t	vk;
 
@@ -428,6 +429,15 @@ static qboolean VK_SelectPhysicalDevice( void ) {
 	vk.physicalDevice = devices[best];
 	qvkGetPhysicalDeviceProperties( vk.physicalDevice, &vk.devProps );
 	qvkGetPhysicalDeviceMemoryProperties( vk.physicalDevice, &vk.memProps );
+
+	// Hardware ray tracing: rtxSupported is a pure capability query; rtxEnabled also
+	// requires the (latched) r_raytracing cvar so we only request the heavier device
+	// extensions/features when the user actually asked for the feature.
+	vk.rtxSupported = VK_RT_DeviceSupported( vk.physicalDevice );
+	vk.rtxEnabled = vk.rtxSupported && r_raytracing && r_raytracing->integer;
+	if ( r_raytracing && r_raytracing->integer && !vk.rtxSupported ) {
+		ri.Printf( PRINT_ALL, "...ray tracing requested but unsupported by this GPU; using raster path\n" );
+	}
 	qvkGetPhysicalDeviceFeatures( vk.physicalDevice, &vk.devFeatures );
 	VK_FindQueueFamilies( vk.physicalDevice, &vk.graphicsFamily, &vk.presentFamily );
 
@@ -445,7 +455,12 @@ static qboolean VK_CreateDevice( void ) {
 	VkDeviceCreateInfo			createInfo;
 	VkPhysicalDeviceVulkan13Features	vk13;
 	VkPhysicalDeviceFeatures	enabledFeatures;
-	const char					*deviceExtensions[1];
+	// ray-tracing feature structs: storage must outlive vkCreateDevice (chained via pNext)
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR	rtAsFeatures;
+	VkPhysicalDeviceRayQueryFeaturesKHR					rtRqFeatures;
+	VkPhysicalDeviceBufferDeviceAddressFeatures			rtBdaFeatures;
+	const char					*deviceExtensions[8];
+	int							extCount = 0;
 	float						priority = 1.0f;
 	uint32_t					queueCount = 0;
 	VkResult					res;
@@ -464,7 +479,13 @@ static qboolean VK_CreateDevice( void ) {
 		queueCount = 2;
 	}
 
-	deviceExtensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+	deviceExtensions[extCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+	// ray query needs acceleration structure + deferred host operations on top of
+	// 1.3 core; only request them when RT is actually being enabled this run.
+	if ( vk.rtxEnabled ) {
+		VK_RT_GetRequiredDeviceExtensions( vk.physicalDevice, deviceExtensions, &extCount,
+			(int)( sizeof( deviceExtensions ) / sizeof( deviceExtensions[0] ) ) );
+	}
 
 	// Q3 fixed-function pipeline needs almost nothing special; request the
 	// handful of features we actually rely on.
@@ -481,9 +502,13 @@ static qboolean VK_CreateDevice( void ) {
 	memset( &createInfo, 0, sizeof( createInfo ) );
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.pNext = &vk13;
+	// splice the ray-tracing feature structs ahead of vk13 when RT is enabled
+	if ( vk.rtxEnabled ) {
+		createInfo.pNext = VK_RT_BuildDeviceFeatureChain( &vk13, &rtAsFeatures, &rtRqFeatures, &rtBdaFeatures );
+	}
 	createInfo.queueCreateInfoCount = queueCount;
 	createInfo.pQueueCreateInfos = queueInfos;
-	createInfo.enabledExtensionCount = 1;
+	createInfo.enabledExtensionCount = (uint32_t)extCount;
 	createInfo.ppEnabledExtensionNames = deviceExtensions;
 	createInfo.pEnabledFeatures = &enabledFeatures;
 
@@ -559,6 +584,7 @@ static void VK_DestroyAll( void ) {
 	}
 
 	if ( vk.device ) {
+		VK_RT_Shutdown();
 		VK_ShutdownPipelines();
 		VK_ShutdownImageSystem();
 		VK_DestroyStreamingBuffers();
@@ -665,6 +691,10 @@ qboolean VK_Init( void ) {
 
 	qvkGetDeviceQueue( vk.device, vk.graphicsFamily, 0, &vk.graphicsQueue );
 	qvkGetDeviceQueue( vk.device, vk.presentFamily, 0, &vk.presentQueue );
+
+	// bring up hardware ray tracing (no-op unless vk.rtxEnabled); on failure it
+	// clears vk.rtxEnabled and the backend keeps using the raster path
+	VK_RT_Init();
 
 	if ( !VK_CreateSwapchain() ) {
 		VK_DestroyAll();

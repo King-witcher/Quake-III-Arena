@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "vk_local.h"
 #include "vk_dlss.h"
+#include "vk_raytrace.h"
 
 /*
 ================
@@ -152,6 +153,9 @@ static qboolean VK_CreateDepthBuffer( void ) {
 		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		if ( vk.rtxEnabled ) {
+			imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;	// RT compute reads depth to reconstruct world pos
+		}
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.depthImage[i] ) );
@@ -196,7 +200,9 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 	VkImageViewCreateInfo	viewInfo;
 	int						i;
 
-	if ( vk.aaMode == VK_AA_OFF ) {
+	// Off needs no offscreen -- UNLESS ray tracing is enabled, which renders the 3D
+	// scene into the offscreen so its deferred compute pass can read+resolve it.
+	if ( vk.aaMode == VK_AA_OFF && !vk.rtxEnabled ) {
 		return qtrue;
 	}
 
@@ -213,8 +219,8 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |	// scene target
-						  VK_IMAGE_USAGE_SAMPLED_BIT |			// FXAA post pass samples it
-						  VK_IMAGE_USAGE_TRANSFER_SRC_BIT;		// SSAA blits it down
+						  VK_IMAGE_USAGE_SAMPLED_BIT |			// FXAA / RT compute samples it
+						  VK_IMAGE_USAGE_TRANSFER_SRC_BIT;		// SSAA / RT blits it
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.offscreenImage[i] ) );
@@ -371,6 +377,18 @@ qboolean VK_CreateSwapchain( void ) {
 		}
 	}
 
+	// Ray tracing runs its own deferred lighting + resolve over a native-resolution
+	// offscreen target; for v1 it takes over the offscreen path and does NOT combine
+	// with SSAA/DLSS/FXAA scaling.  Force a 1:1 render extent and disable the other
+	// resolve modes so only the RT path runs.
+	if ( vk.rtxEnabled ) {
+		vk.aaMode = VK_AA_OFF;			// RT owns the resolve; suppress FXAA/SSAA/DLSS
+		vk.dlssMode = VK_DLSS_OFF;
+		vk.ssaaFactor = 1;
+		vk.ssaaScale = 1.0f;
+		vk.renderExtent = vk.extent;
+	}
+
 	desiredImages = caps.minImageCount + 1;
 	if ( caps.maxImageCount > 0 && desiredImages > caps.maxImageCount ) {
 		desiredImages = caps.maxImageCount;
@@ -444,6 +462,10 @@ qboolean VK_CreateSwapchain( void ) {
 	// re-point the FXAA sampler sets at the (re)created offscreen views.  No-op on the
 	// first build (VK_InitPostProcess has not run yet); it updates them itself then.
 	VK_UpdateOffscreenDescriptors();
+	// ray-tracing render targets + compute descriptors (no-op unless rtxEnabled)
+	if ( !VK_RT_CreateTargets() ) {
+		return qfalse;
+	}
 
 	glConfig.isFullscreen = ( r_fullscreen->integer != 0 );
 	vk.swapchainValid = qtrue;
@@ -461,6 +483,7 @@ VK_DestroySwapchain
 void VK_DestroySwapchain( void ) {
 	uint32_t i;
 
+	VK_RT_DestroyTargets();
 	VK_DestroyOffscreenTargets();
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
