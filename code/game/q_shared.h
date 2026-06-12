@@ -76,6 +76,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "bg_lib.h"
 
+// The QVM bytecode is always 32-bit, so a pointer-sized integer is just int.
+// The native (x64) engine uses the real intptr_t from <stdint.h>; this keeps
+// the shared vmMain/syscall signatures compiling under q3lcc.
+typedef int intptr_t;
+
 #else
 
 #include <assert.h>

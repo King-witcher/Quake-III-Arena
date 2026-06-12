@@ -366,12 +366,9 @@ static qboolean PM_CheckJump( void ) {
 		return qfalse;
 	}
 
-	// must wait for jump to be released
-	if ( pm->ps->pm_flags & PMF_JUMP_HELD ) {
-		// clear upmove so cmdscale doesn't lower running speed
-		pm->cmd.upmove = 0;
-		return qfalse;
-	}
+	// auto-bunnyhop: keep the jump key held and we jump again the instant we
+	// touch the ground, no need to release and re-press space.
+	// (original Q3 returned qfalse here while PMF_JUMP_HELD was set)
 
 	pml.groundPlane = qfalse;		// jumping away
 	pml.walking = qfalse;
