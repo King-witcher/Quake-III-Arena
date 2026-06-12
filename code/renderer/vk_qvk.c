@@ -119,13 +119,18 @@ static void APIENTRY VKstub_PolygonOffset( GLfloat a, GLfloat b ) {}
 static void APIENTRY VKstub_PolygonMode( GLenum a, GLenum b ) {}
 static void APIENTRY VKstub_DepthRange( GLclampd a, GLclampd b ) {}
 static void APIENTRY VKstub_Color3f( GLfloat a, GLfloat b, GLfloat c ) {}
+static void APIENTRY VKstub_Color4f( GLfloat a, GLfloat b, GLfloat c, GLfloat d ) {}
 static void APIENTRY VKstub_Color4ubv( const GLubyte *v ) {}
 static void APIENTRY VKstub_Begin( GLenum a ) {}
-static void APIENTRY VKstub_End( void ) {}
-static void APIENTRY VKstub_Vertex3fv( const GLfloat *v ) {}
+static void APIENTRY VKstub_Void( void ) {}
+static void APIENTRY VKstub_Floatv( const GLfloat *v ) {}
+static void APIENTRY VKstub_2f( GLfloat a, GLfloat b ) {}
 static void APIENTRY VKstub_ArrayElement( GLint i ) {}
+static void APIENTRY VKstub_Ortho( GLdouble a, GLdouble b, GLdouble c, GLdouble d, GLdouble e, GLdouble f ) {}
+static void APIENTRY VKstub_MultiTexCoord2f( GLenum t, GLfloat s, GLfloat v ) {}
 
 void VK_InstallInertGLProcs( void ) {
+	// vertex arrays + draw-state (stage iterators)
 	qglEnableClientState  = VKstub_ClientState;
 	qglDisableClientState = VKstub_ClientState;
 	qglVertexPointer      = VKstub_Pointer;
@@ -136,12 +141,25 @@ void VK_InstallInertGLProcs( void ) {
 	qglPolygonOffset      = VKstub_PolygonOffset;
 	qglPolygonMode        = VKstub_PolygonMode;
 	qglDepthRange         = VKstub_DepthRange;
+	// immediate mode + matrix stack (sky box, debug draws)
 	qglColor3f            = VKstub_Color3f;
+	qglColor4f            = VKstub_Color4f;
 	qglColor4ubv          = VKstub_Color4ubv;
 	qglBegin              = VKstub_Begin;
-	qglEnd                = VKstub_End;
-	qglVertex3fv          = VKstub_Vertex3fv;
+	qglEnd                = VKstub_Void;
+	qglVertex3fv          = VKstub_Floatv;
+	qglVertex2f           = VKstub_2f;
+	qglTexCoord2fv        = VKstub_Floatv;
+	qglTexCoord2f         = VKstub_2f;
+	qglMultiTexCoord2fARB = VKstub_MultiTexCoord2f;
 	qglArrayElement       = VKstub_ArrayElement;
+	qglMatrixMode         = VKstub_Cap;
+	qglLoadIdentity       = VKstub_Void;
+	qglLoadMatrixf        = VKstub_Floatv;
+	qglPushMatrix         = VKstub_Void;
+	qglPopMatrix          = VKstub_Void;
+	qglTranslatef         = VKstub_Color3f;
+	qglOrtho              = VKstub_Ortho;
 }
 
 /*

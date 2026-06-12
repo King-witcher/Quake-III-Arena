@@ -156,8 +156,11 @@ void VK_BeginFrame( void ) {
 	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
 
 	memset( &viewport, 0, sizeof( viewport ) );
+	viewport.x = 0.0f;
+	viewport.y = (float)vk.extent.height;		// negative-height viewport (GL-compatible Y)
 	viewport.width = (float)vk.extent.width;
-	viewport.height = (float)vk.extent.height;
+	viewport.height = -(float)vk.extent.height;
+	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 	qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
 
@@ -254,22 +257,28 @@ void VK_Set2D( void ) {
 	float		w = (float)glConfig.vidWidth;
 	float		h = (float)glConfig.vidHeight;
 
-	// column-major ortho: x [0,w]->[-1,1], y [0,h]->[-1,1] (down), z [0,1]->[0,1]
+	// GL-style ortho (matches qglOrtho(0,w,h,0,0,1)): x [0,w]->[-1,1],
+	// y [0,h]->[+1,-1] (GL y-up), z passthrough.  Combined with the negative-height
+	// viewport below this lands screen (0,0) at the framebuffer top-left and keeps
+	// GL's CCW winding (so 2D and 3D share one front face).
 	Com_Memset( vk.draw.mvp, 0, sizeof( vk.draw.mvp ) );
-	vk.draw.mvp[0]  = 2.0f / w;
-	vk.draw.mvp[5]  = 2.0f / h;
-	vk.draw.mvp[10] = 1.0f;
+	vk.draw.mvp[0]  =  2.0f / w;
+	vk.draw.mvp[5]  = -2.0f / h;
+	vk.draw.mvp[10] =  1.0f;
 	vk.draw.mvp[12] = -1.0f;
-	vk.draw.mvp[13] = -1.0f;
-	vk.draw.mvp[15] = 1.0f;
+	vk.draw.mvp[13] =  1.0f;
+	vk.draw.mvp[15] =  1.0f;
 
 	vk.draw.stateBits = GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
 	vk.draw.cullType = CT_TWO_SIDED;
 
 	if ( vk.frameStarted ) {
 		memset( &viewport, 0, sizeof( viewport ) );
+		viewport.x = 0.0f;
+		viewport.y = h;			// negative-height viewport (flip Y in the viewport transform)
 		viewport.width = w;
-		viewport.height = h;
+		viewport.height = -h;
+		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 		qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
 
@@ -277,6 +286,136 @@ void VK_Set2D( void ) {
 		scissor.offset.y = 0;
 		scissor.extent = vk.extent;
 		qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
+	}
+}
+
+/*
+================
+VK_Mat4Mul
+
+out = a * b, all column-major 4x4 (OpenGL convention, as Q3 stores its matrices).
+================
+*/
+static void VK_Mat4Mul( const float *a, const float *b, float *out ) {
+	int c, r, k;
+	for ( c = 0; c < 4; c++ ) {
+		for ( r = 0; r < 4; r++ ) {
+			float sum = 0.0f;
+			for ( k = 0; k < 4; k++ ) {
+				sum += a[k * 4 + r] * b[c * 4 + k];
+			}
+			out[c * 4 + r] = sum;
+		}
+	}
+}
+
+/*
+================
+VK_SetViewport
+
+SetViewportAndScissor leaf: store the 3D projection and set the viewport/scissor.
+Q3's viewport is bottom-left origin; convert to Vulkan's top-left framebuffer.
+================
+*/
+void VK_SetViewport( void ) {
+	VkViewport	vp;
+	VkRect2D	sc;
+	int			x = backEnd.viewParms.viewportX;
+	int			w = backEnd.viewParms.viewportWidth;
+	int			h = backEnd.viewParms.viewportHeight;
+	int			yTop = glConfig.vidHeight - backEnd.viewParms.viewportY - h;	// top-left origin
+
+	Com_Memcpy( vk.draw.projection, backEnd.viewParms.projectionMatrix, sizeof( vk.draw.projection ) );
+
+	if ( !vk.frameStarted ) {
+		return;
+	}
+
+	memset( &vp, 0, sizeof( vp ) );
+	vp.x = (float)x;
+	vp.y = (float)( yTop + h );		// negative-height viewport (GL-compatible Y)
+	vp.width = (float)w;
+	vp.height = -(float)h;
+	vp.minDepth = 0.0f;
+	vp.maxDepth = 1.0f;
+	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+
+	sc.offset.x = x;
+	sc.offset.y = yTop;				// scissor stays in framebuffer (top-left) coords
+	sc.extent.width = w;
+	sc.extent.height = h;
+	qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+}
+
+/*
+================
+VK_ClearView
+
+RB_BeginDrawingView leaf: clear depth (+ optional stencil/color) within the
+current view rectangle, matching GL's per-view qglClear.
+================
+*/
+void VK_ClearView( int clearBits ) {
+	VkClearAttachment	att[2];
+	VkClearRect			rect;
+	int					n = 0;
+
+	if ( !vk.frameStarted || clearBits == 0 ) {
+		return;
+	}
+
+	memset( att, 0, sizeof( att ) );
+
+	// GL_DEPTH_BUFFER_BIT (0x100) always; GL_STENCIL_BUFFER_BIT (0x400)
+	att[n].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	if ( clearBits & GL_STENCIL_BUFFER_BIT ) {
+		att[n].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
+	att[n].clearValue.depthStencil.depth = 1.0f;
+	att[n].clearValue.depthStencil.stencil = 0;
+	n++;
+
+	if ( clearBits & GL_COLOR_BUFFER_BIT ) {
+		att[n].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		att[n].colorAttachment = 0;
+		att[n].clearValue.color.float32[0] = 0.0f;
+		att[n].clearValue.color.float32[1] = 0.0f;
+		att[n].clearValue.color.float32[2] = 0.0f;
+		att[n].clearValue.color.float32[3] = 1.0f;
+		n++;
+	}
+
+	rect.rect.offset.x = backEnd.viewParms.viewportX;
+	rect.rect.offset.y = glConfig.vidHeight - backEnd.viewParms.viewportY - backEnd.viewParms.viewportHeight;
+	rect.rect.extent.width = backEnd.viewParms.viewportWidth;
+	rect.rect.extent.height = backEnd.viewParms.viewportHeight;
+	rect.baseArrayLayer = 0;
+	rect.layerCount = 1;
+
+	qvkCmdClearAttachments( vk.cmd, n, att, 1, &rect );
+}
+
+/*
+================
+VK_SetModelMatrix
+
+Replaces qglLoadMatrixf(modelMatrix) in the 3D path: build the push-constant MVP
+as Cz * projection * model.  Cz only remaps clip Z from GL's [-1,1] to Vulkan's
+[0,1]; the GL->Vulkan Y flip is handled by the negative-height viewport (so GL's
+CCW winding is preserved and culling stays identical).
+================
+*/
+void VK_SetModelMatrix( const float *modelMatrix ) {
+	float	pm[16];
+	int		c;
+
+	VK_Mat4Mul( vk.draw.projection, modelMatrix, pm );
+
+	for ( c = 0; c < 4; c++ ) {
+		vk.draw.mvp[c * 4 + 0] = pm[c * 4 + 0];
+		vk.draw.mvp[c * 4 + 1] = pm[c * 4 + 1];
+		vk.draw.mvp[c * 4 + 2] = 0.5f * ( pm[c * 4 + 2] + pm[c * 4 + 3] );	// [-1,1] -> [0,1]
+		vk.draw.mvp[c * 4 + 3] = pm[c * 4 + 3];
 	}
 }
 

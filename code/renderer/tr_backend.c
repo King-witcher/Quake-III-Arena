@@ -456,6 +456,11 @@ static void RB_Hyperspace( void ) {
 
 
 static void SetViewportAndScissor( void ) {
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_SetViewport();
+		return;
+	}
+
 	qglMatrixMode(GL_PROJECTION);
 	qglLoadMatrixf( backEnd.viewParms.projectionMatrix );
 	qglMatrixMode(GL_MODELVIEW);
@@ -479,7 +484,7 @@ void RB_BeginDrawingView (void) {
 	int clearBits = 0;
 
 	// sync with gl if needed
-	if ( r_finish->integer == 1 && !glState.finishCalled ) {
+	if ( r_currentApi == RENDER_API_OPENGL && r_finish->integer == 1 && !glState.finishCalled ) {
 		qglFinish ();
 		glState.finishCalled = qtrue;
 	}
@@ -508,17 +513,28 @@ void RB_BeginDrawingView (void) {
 	if ( r_fastsky->integer && !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) )
 	{
 		clearBits |= GL_COLOR_BUFFER_BIT;	// FIXME: only if sky shaders have been used
+		if ( r_currentApi == RENDER_API_OPENGL )
+		{
 #ifdef _DEBUG
-		qglClearColor( 0.8f, 0.7f, 0.4f, 1.0f );	// FIXME: get color of sky
+			qglClearColor( 0.8f, 0.7f, 0.4f, 1.0f );	// FIXME: get color of sky
 #else
-		qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );	// FIXME: get color of sky
+			qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );	// FIXME: get color of sky
 #endif
+		}
 	}
-	qglClear( clearBits );
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_ClearView( clearBits );
+	} else {
+		qglClear( clearBits );
+	}
 
 	if ( ( backEnd.refdef.rdflags & RDF_HYPERSPACE ) )
 	{
-		RB_Hyperspace();
+		if ( r_currentApi == RENDER_API_OPENGL ) {
+			RB_Hyperspace();
+		} else {
+			backEnd.isHyperspace = qtrue;	// VK hyperspace flash: Phase 8
+		}
 		return;
 	}
 	else
@@ -531,26 +547,29 @@ void RB_BeginDrawingView (void) {
 	// we will only draw a sun if there was sky rendered in this view
 	backEnd.skyRenderedThisView = qfalse;
 
-	// clip to the plane of the portal
-	if ( backEnd.viewParms.isPortal ) {
-		float	plane[4];
-		double	plane2[4];
+	// clip to the plane of the portal (OpenGL clip plane; the Vulkan portal clip
+	// path via gl_ClipDistance arrives in Phase 7)
+	if ( r_currentApi == RENDER_API_OPENGL ) {
+		if ( backEnd.viewParms.isPortal ) {
+			float	plane[4];
+			double	plane2[4];
 
-		plane[0] = backEnd.viewParms.portalPlane.normal[0];
-		plane[1] = backEnd.viewParms.portalPlane.normal[1];
-		plane[2] = backEnd.viewParms.portalPlane.normal[2];
-		plane[3] = backEnd.viewParms.portalPlane.dist;
+			plane[0] = backEnd.viewParms.portalPlane.normal[0];
+			plane[1] = backEnd.viewParms.portalPlane.normal[1];
+			plane[2] = backEnd.viewParms.portalPlane.normal[2];
+			plane[3] = backEnd.viewParms.portalPlane.dist;
 
-		plane2[0] = DotProduct (backEnd.viewParms.or.axis[0], plane);
-		plane2[1] = DotProduct (backEnd.viewParms.or.axis[1], plane);
-		plane2[2] = DotProduct (backEnd.viewParms.or.axis[2], plane);
-		plane2[3] = DotProduct (plane, backEnd.viewParms.or.origin) - plane[3];
+			plane2[0] = DotProduct (backEnd.viewParms.or.axis[0], plane);
+			plane2[1] = DotProduct (backEnd.viewParms.or.axis[1], plane);
+			plane2[2] = DotProduct (backEnd.viewParms.or.axis[2], plane);
+			plane2[3] = DotProduct (plane, backEnd.viewParms.or.origin) - plane[3];
 
-		qglLoadMatrixf( s_flipMatrix );
-		qglClipPlane (GL_CLIP_PLANE0, plane2);
-		qglEnable (GL_CLIP_PLANE0);
-	} else {
-		qglDisable (GL_CLIP_PLANE0);
+			qglLoadMatrixf( s_flipMatrix );
+			qglClipPlane (GL_CLIP_PLANE0, plane2);
+			qglEnable (GL_CLIP_PLANE0);
+		} else {
+			qglDisable (GL_CLIP_PLANE0);
+		}
 	}
 }
 
@@ -668,7 +687,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				R_TransformDlights( backEnd.refdef.num_dlights, backEnd.refdef.dlights, &backEnd.or );
 			}
 
-			qglLoadMatrixf( backEnd.or.modelMatrix );
+			if ( r_currentApi == RENDER_API_VULKAN ) {
+				VK_SetModelMatrix( backEnd.or.modelMatrix );
+			} else {
+				qglLoadMatrixf( backEnd.or.modelMatrix );
+			}
 
 			//
 			// change depthrange if needed
@@ -697,7 +720,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	// go back to the world modelview matrix
-	qglLoadMatrixf( backEnd.viewParms.world.modelMatrix );
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_SetModelMatrix( backEnd.viewParms.world.modelMatrix );
+	} else {
+		qglLoadMatrixf( backEnd.viewParms.world.modelMatrix );
+	}
 	if ( depthRange ) {
 		qglDepthRange (0, 1);
 	}
@@ -705,11 +732,15 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 #if 0
 	RB_DrawSun();
 #endif
-	// darken down any stencil shadows
-	RB_ShadowFinish();		
+	// stencil shadows and light flares use immediate GL; the Vulkan equivalents
+	// arrive in later phases (shadows Phase 8, flares Phase 6).
+	if ( r_currentApi == RENDER_API_OPENGL ) {
+		// darken down any stencil shadows
+		RB_ShadowFinish();
 
-	// add light flares on lights that aren't obscured
-	RB_RenderFlares();
+		// add light flares on lights that aren't obscured
+		RB_RenderFlares();
+	}
 
 #ifdef __MACOS__
 	Sys_PumpEvents();		// crutch up the mac's limited buffer queue size
@@ -985,13 +1016,6 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
-
-	// The 3D world/entity backend (RB_RenderDrawSurfList) is brought up under
-	// Vulkan in Phase 4.  Until then skip it so the 2D path can be validated
-	// without the 3D GL calls (which are not dispatched yet) crashing.
-	if ( r_currentApi == RENDER_API_VULKAN ) {
-		return (const void *)(cmd + 1);
-	}
 
 	RB_RenderDrawSurfList( cmd->drawSurfs, cmd->numDrawSurfs );
 

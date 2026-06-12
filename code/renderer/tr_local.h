@@ -1271,6 +1271,9 @@ void		VKBE_Install( backend_t *b );
 // Vulkan types) so those files need not include the Vulkan headers.  Implemented
 // in vk_backend.c.
 void		VK_Set2D( void );
+void		VK_SetViewport( void );							// 3D viewport/scissor + store projection
+void		VK_ClearView( int clearBits );					// per-view depth/stencil/color clear
+void		VK_SetModelMatrix( const float *modelMatrix );	// compute MVP = Cvk * projection * model
 void		VK_State( unsigned stateBits );
 void		VK_Cull( int cullType );
 void		VK_TexEnv( int env );

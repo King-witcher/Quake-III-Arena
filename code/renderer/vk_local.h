@@ -156,7 +156,8 @@ typedef struct {
 
 	// live draw-recording state (set by the dispatched GL_* leaves)
 	struct {
-		float		mvp[16];			// push constant
+		float		mvp[16];			// push constant (final clip-space transform)
+		float		projection[16];		// current 3D projection (set by VK_SetViewport)
 		unsigned	stateBits;			// last GL_State
 		int			cullType;			// last GL_Cull
 		image_t		*image[2];			// bound texture per TMU

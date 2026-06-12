@@ -256,7 +256,9 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	case CT_BACK_SIDED:		raster.cullMode = key->mirror ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT; break;
 	default:				raster.cullMode = VK_CULL_MODE_NONE; break;
 	}
-	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;	// GL default; revisited with the 3D Y-flip
+	// We render with negative-height viewports (GL-compatible Y), so GL's CCW
+	// winding is preserved for both 2D and 3D -- a single front face works.
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	raster.lineWidth = 1.0f;
 	if ( key->polygonOffset ) {
 		raster.depthBiasEnable = VK_TRUE;	// values supplied dynamically (vkCmdSetDepthBias)
