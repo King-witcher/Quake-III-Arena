@@ -1003,7 +1003,11 @@ qsort replacement
 
 =================
 */
-#define	SWAP_DRAW_SURF(a,b) temp=((int *)a)[0];((int *)a)[0]=((int *)b)[0];((int *)b)[0]=temp; temp=((int *)a)[1];((int *)a)[1]=((int *)b)[1];((int *)b)[1]=temp;
+// Swap two drawSurf_t.  The old macro swapped exactly 8 bytes (two ints),
+// which assumed sizeof(drawSurf_t)==8 -- true on 32-bit (unsigned sort + a
+// 4-byte surface pointer) but NOT on x64, where the 8-byte pointer makes the
+// struct 16 bytes.  Swap the whole struct so it is pointer-width-safe.
+#define	SWAP_DRAW_SURF(a,b) do { drawSurf_t swaptmp_ = *(drawSurf_t *)(a); *(drawSurf_t *)(a) = *(drawSurf_t *)(b); *(drawSurf_t *)(b) = swaptmp_; } while(0)
 
 /* this parameter defines the cutoff between using quick sort and
    insertion sort for arrays; arrays with lengths shorter or equal to the
@@ -1013,7 +1017,6 @@ qsort replacement
 
 static void shortsort( drawSurf_t *lo, drawSurf_t *hi ) {
     drawSurf_t	*p, *max;
-	int			temp;
 
     while (hi > lo) {
         max = lo;
@@ -1044,11 +1047,6 @@ void qsortFast (
     unsigned size;              /* size of the sub-array */
     char *lostk[30], *histk[30];
     int stkptr;                 /* stack for saving sub-array to be processed */
-	int	temp;
-
-	if ( sizeof(drawSurf_t) != 8 ) {
-		ri.Error( ERR_DROP, "change SWAP_DRAW_SURF macro" );
-	}
 
     /* Note: the number of stack entries required is no more than
        1 + log2(size), so 30 is sufficient for any array */

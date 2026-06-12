@@ -579,7 +579,9 @@ void VK_InitPostProcess( void ) {
 	plInfo.pPushConstantRanges = &pushRange;
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &plInfo, NULL, &vk.postLayout ) );
 
-	if ( vk.aaMode == VK_AA_FXAA ) {
+	// DLSS reuses the FXAA fullscreen pass to upscale its sub-display offscreen,
+	// so it needs pipeFXAA too (VK_EndFrame routes VK_AA_DLSS to VK_ResolveFXAA).
+	if ( vk.aaMode == VK_AA_FXAA || vk.aaMode == VK_AA_DLSS ) {
 		vk.pipeFXAA = VK_CreatePostPipeline( vk_spv_fxaa_frag, sizeof( vk_spv_fxaa_frag ) );
 	} else {	// VK_AA_SSAA
 		vk.pipeDownsample = VK_CreatePostPipeline( vk_spv_downsample_frag, sizeof( vk_spv_downsample_frag ) );
