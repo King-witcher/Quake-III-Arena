@@ -1038,6 +1038,8 @@ extern cvar_t	*r_rtGI;				// 0/1 enable 1-bounce diffuse GI (color bleeding)
 extern cvar_t	*r_rtGIIntensity;		// scales the indirect (color-bleed) contribution
 extern cvar_t	*r_rtAmbientScale;		// scales the lightmap "global base" so nothing is fully black
 extern cvar_t	*r_rtRays;				// hemisphere rays per pixel for the GI gather (quality/perf)
+extern cvar_t	*r_rtTemporal;			// 0 = off (static noise), 1 = temporal accumulation (reprojected)
+extern cvar_t	*r_rtTestLight;			// debug: inject a bright dynamic light above the camera (0 = off)
 extern cvar_t	*r_mode;				// video mode
 extern cvar_t	*r_fullscreen;
 extern cvar_t	*r_gamma;

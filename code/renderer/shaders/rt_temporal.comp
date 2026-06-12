@@ -1,0 +1,79 @@
+#version 460
+// rt_temporal.comp -- temporal accumulation of the ray-traced indirect.
+//
+// rt_light.comp now jitters its sampling per frame, so the raw indirect (u_gi) is
+// DIFFERENT noise each frame.  This pass reprojects the previous accumulated result
+// (from 2 frames ago, in a per-slot ping-pong history that is race-free) into the
+// current frame and blends it with the current sample -- so the noise averages out
+// over time into a clean, temporally-stable image instead of static screen "dirt".
+//
+// History pixel: rgb = accumulated indirect, a = linear view-Z (eye distance) used to
+// reject reprojection across depth discontinuities (disocclusion / new geometry).
+#extension GL_EXT_ray_query : require
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout( set = 0, binding = 0, rgba16f ) uniform image2D u_gi;          // current raw indirect (read+write own pixel)
+layout( set = 0, binding = 1 ) uniform sampler2D u_depth;
+layout( set = 0, binding = 2 ) uniform sampler2D u_histRead;          // 2-frame-old accum (rgb) + linZ (a)
+layout( set = 0, binding = 3, rgba16f ) uniform writeonly image2D u_histWrite;
+
+#define MAX_RT_DLIGHTS 32
+struct DLight { vec4 posRad; vec4 color; };
+layout( set = 0, binding = 4, std140 ) uniform UBO {
+	mat4   invViewProj;
+	vec4   eye;
+	vec4   screen;
+	vec4   p0;
+	vec4   p1;
+	mat4   prevViewProj;
+	vec4   prevEye;
+	vec4   temporal;     // x=enabled, y=alpha, z=histValid, w=frameCounter
+	DLight dl[MAX_RT_DLIGHTS];
+} ubo;
+
+vec3 reconstruct( vec2 uv, float d ) {
+	vec3 ndc = vec3( uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d );
+	vec4 w = ubo.invViewProj * vec4( ndc, 1.0 );
+	return w.xyz / w.w;
+}
+
+void main() {
+	ivec2 pix = ivec2( gl_GlobalInvocationID.xy );
+	int W = int( ubo.screen.x );
+	int H = int( ubo.screen.y );
+	if ( pix.x >= W || pix.y >= H ) {
+		return;
+	}
+
+	vec3  cur = imageLoad( u_gi, pix ).rgb;
+	float depth = texelFetch( u_depth, pix, 0 ).r;
+
+	if ( depth >= 1.0 ) {		// sky: nothing to accumulate
+		imageStore( u_gi, pix, vec4( cur, 1.0 ) );
+		imageStore( u_histWrite, pix, vec4( cur, 1.0e9 ) );
+		return;
+	}
+
+	vec3  P = reconstruct( ( vec2( pix ) + 0.5 ) * ubo.screen.zw, depth );
+	float curZ = length( P - ubo.eye.xyz );
+	vec3  accum = cur;
+
+	if ( ubo.temporal.x > 0.5 && ubo.temporal.z > 0.5 ) {
+		vec4 pc = ubo.prevViewProj * vec4( P, 1.0 );
+		if ( pc.w > 0.0 ) {
+			vec2 puv = vec2( pc.x / pc.w * 0.5 + 0.5, 0.5 - pc.y / pc.w * 0.5 );
+			if ( all( greaterThanEqual( puv, vec2( 0.0 ) ) ) && all( lessThanEqual( puv, vec2( 1.0 ) ) ) ) {
+				vec4  hist = texture( u_histRead, puv );
+				float expZ = length( P - ubo.prevEye.xyz );	// same surface -> matches stored linZ
+				if ( abs( expZ - hist.a ) < 0.1 * expZ + 2.0 ) {
+					float alpha = clamp( ubo.temporal.y, 0.02, 1.0 );	// fraction of the NEW sample kept
+					accum = mix( hist.rgb, cur, alpha );
+				}
+			}
+		}
+	}
+
+	imageStore( u_gi, pix, vec4( accum, 1.0 ) );		// hand the denoised-in-time GI to rt_blur
+	imageStore( u_histWrite, pix, vec4( accum, curZ ) );	// keep for the next accumulation
+}

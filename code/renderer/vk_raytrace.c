@@ -38,6 +38,9 @@ typedef struct {
 	float		screen[4];		// w, h, 1/w, 1/h
 	float		p0[4];			// ambientScale, giIntensity, numGiRays, giEnabled
 	float		p1[4];			// numDlights, worldBuilt, giRayLength, unused
+	float		prevViewProj[16];	// VP of the temporal history image (for reprojection)
+	float		prevEye[4];			// eye when the history was written
+	float		temporal[4];		// x=temporalEnabled, y=blendAlpha, z=histValid, w=frameCounter
 	rtDLight_t	dl[RT_MAX_DLIGHTS];
 } rtUBO_t;
 
@@ -100,10 +103,28 @@ typedef struct {
 	VkPipelineLayout		blurPipeLayout;
 	VkPipeline				blurPipe;
 
+	// temporal accumulation: per-frame-slot ping-pong history (race-free: a frame reads
+	// the slot's data from 2 frames ago, guaranteed complete by frameFence).  RGBA16F:
+	// rgb = accumulated indirect, a = linear view-Z (for disocclusion).
+	VkImage			tHistImg[2][VK_NUM_FRAMES];
+	VkDeviceMemory	tHistMem[2][VK_NUM_FRAMES];
+	VkImageView		tHistView[2][VK_NUM_FRAMES];
+	VkImageLayout	tHistLayout[2][VK_NUM_FRAMES];	// tracked (ping images alternate read/write roles)
+	uint32_t		tHistPing[VK_NUM_FRAMES];		// which ping holds slot s's last-written data
+	qboolean		tHistValid[2][VK_NUM_FRAMES];	// false until first written
+	float			tHistVP[2][VK_NUM_FRAMES][16];	// VP used when each ping image was written
+	float			tHistEye[2][VK_NUM_FRAMES][3];
+	uint32_t		frameCounter;
+	VkDescriptorSetLayout	tempSetLayout;
+	VkPipelineLayout		tempPipeLayout;
+	VkPipeline				tempPipe;
+	VkDescriptorSet			tempSets[VK_NUM_FRAMES];
+
 	// camera captured each frame from the 3D view (for depth -> world reconstruction)
 	float			camProj[16];
 	float			camView[16];
 	float			camEye[3];
+	float			camVP[16];		// Cz*proj*view this frame (stored as history VP)
 	qboolean		camValid;
 } vkrt_t;
 
@@ -1119,6 +1140,26 @@ static qboolean RT_CreateComputePipeline( void ) {
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &pli, NULL, &rt.blurPipeLayout ) );
 	rt.blurPipe = RT_BuildComputePipe( rt.blurPipeLayout, vk_spv_rt_blur_comp, sizeof( vk_spv_rt_blur_comp ) );
 
+	// --- temporal pass: 5 bindings (gi storage RW, depth, history read, history write, UBO) ---
+	memset( b, 0, sizeof( b ) );
+	for ( i = 0; i < 5; i++ ) {
+		b[i].binding = i;
+		b[i].descriptorCount = 1;
+		b[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	b[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			// current indirect (read+write)
+	b[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	// depth
+	b[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	// history read
+	b[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			// history write
+	b[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			// UBO
+
+	li.bindingCount = 5;
+	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &li, NULL, &rt.tempSetLayout ) );
+
+	pli.pSetLayouts = &rt.tempSetLayout;
+	VK_CHECK( qvkCreatePipelineLayout( vk.device, &pli, NULL, &rt.tempPipeLayout ) );
+	rt.tempPipe = RT_BuildComputePipe( rt.tempPipeLayout, vk_spv_rt_temporal_comp, sizeof( vk_spv_rt_temporal_comp ) );
+
 	return qtrue;
 }
 
@@ -1201,26 +1242,44 @@ qboolean VK_RT_CreateTargets( void ) {
 		vi.image = rt.giImg[i];
 		VK_CHECK( qvkCreateImageView( vk.device, &vi, NULL, &rt.giView[i] ) );
 
+		// temporal history: ping-pong pair per frame slot (same R16F storage+sampled format)
+		{
+			int p;
+			for ( p = 0; p < 2; p++ ) {
+				VK_CHECK( qvkCreateImage( vk.device, &ii, NULL, &rt.tHistImg[p][i] ) );
+				qvkGetImageMemoryRequirements( vk.device, rt.tHistImg[p][i], &mr );
+				ai.allocationSize = mr.size;
+				ai.memoryTypeIndex = VK_FindMemoryType( mr.memoryTypeBits, devProps );
+				VK_CHECK( qvkAllocateMemory( vk.device, &ai, NULL, &rt.tHistMem[p][i] ) );
+				VK_CHECK( qvkBindImageMemory( vk.device, rt.tHistImg[p][i], rt.tHistMem[p][i], 0 ) );
+				vi.image = rt.tHistImg[p][i];
+				VK_CHECK( qvkCreateImageView( vk.device, &vi, NULL, &rt.tHistView[p][i] ) );
+				rt.tHistLayout[p][i] = VK_IMAGE_LAYOUT_UNDEFINED;
+				rt.tHistValid[p][i] = qfalse;
+			}
+			rt.tHistPing[i] = 0;
+		}
+
 		rt.depthSampleView[i] = RT_DepthAspectView( vk.depthImage[i] );
 
 		rt.uboBuf[i] = RT_CreateBuffer( sizeof( rtUBO_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			hostProps, &rt.uboMem[i], &rt.uboMapped[i] );
 	}
 
-	// descriptor pool covering both the lighting set and the denoise set per frame.
-	// per frame: combined samplers = 2 (light: scene,depth) + 2 (blur: gi,depth) = 4;
-	// storage images = 2 (light: out,giOut) + 1 (blur: out) = 3; accel struct = 1;
-	// storage buffers = 2 (light: geo,idx); uniform buffers = 1 (light) + 1 (blur) = 2.
+	// descriptor pool covering the lighting, temporal and denoise sets per frame.  Per frame:
+	// combined samplers = 3 (light: scene,depth,albedo) + 2 (temporal: depth,histRead) + 2 (blur: gi,depth) = 7;
+	// storage images   = 2 (light: out,giOut) + 2 (temporal: gi,histWrite) + 1 (blur: out) = 5;
+	// accel struct = 1 (light); storage buffers = 2 (light: geo,idx); uniform buffers = 3 (light,temporal,blur).
 	memset( poolSizes, 0, sizeof( poolSizes ) );
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	poolSizes[0].descriptorCount = 5 * VK_NUM_FRAMES;
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			poolSizes[1].descriptorCount = 3 * VK_NUM_FRAMES;
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	poolSizes[0].descriptorCount = 7 * VK_NUM_FRAMES;
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			poolSizes[1].descriptorCount = 5 * VK_NUM_FRAMES;
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR; poolSizes[2].descriptorCount = 1 * VK_NUM_FRAMES;
 	poolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;			poolSizes[3].descriptorCount = 2 * VK_NUM_FRAMES;
-	poolSizes[4].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			poolSizes[4].descriptorCount = 2 * VK_NUM_FRAMES;
+	poolSizes[4].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			poolSizes[4].descriptorCount = 3 * VK_NUM_FRAMES;
 
 	memset( &dpi, 0, sizeof( dpi ) );
 	dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	dpi.maxSets = 2 * VK_NUM_FRAMES;
+	dpi.maxSets = 3 * VK_NUM_FRAMES;
 	dpi.poolSizeCount = 5;
 	dpi.pPoolSizes = poolSizes;
 	VK_CHECK( qvkCreateDescriptorPool( vk.device, &dpi, NULL, &rt.descPool ) );
@@ -1242,6 +1301,10 @@ qboolean VK_RT_CreateTargets( void ) {
 	dsai.pSetLayouts = layouts;
 	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &dsai, rt.blurSets ) );
 
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) { layouts[i] = rt.tempSetLayout; }
+	dsai.pSetLayouts = layouts;
+	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &dsai, rt.tempSets ) );
+
 	rt.targetsReady = qtrue;
 	return qtrue;
 }
@@ -1259,15 +1322,25 @@ void VK_RT_DestroyTargets( void ) {
 	}
 	if ( rt.pipe )           { qvkDestroyPipeline( vk.device, rt.pipe, NULL ); rt.pipe = VK_NULL_HANDLE; }
 	if ( rt.blurPipe )       { qvkDestroyPipeline( vk.device, rt.blurPipe, NULL ); rt.blurPipe = VK_NULL_HANDLE; }
+	if ( rt.tempPipe )       { qvkDestroyPipeline( vk.device, rt.tempPipe, NULL ); rt.tempPipe = VK_NULL_HANDLE; }
 	if ( rt.pipeLayout )     { qvkDestroyPipelineLayout( vk.device, rt.pipeLayout, NULL ); rt.pipeLayout = VK_NULL_HANDLE; }
 	if ( rt.blurPipeLayout ) { qvkDestroyPipelineLayout( vk.device, rt.blurPipeLayout, NULL ); rt.blurPipeLayout = VK_NULL_HANDLE; }
+	if ( rt.tempPipeLayout ) { qvkDestroyPipelineLayout( vk.device, rt.tempPipeLayout, NULL ); rt.tempPipeLayout = VK_NULL_HANDLE; }
 	if ( rt.setLayout )      { qvkDestroyDescriptorSetLayout( vk.device, rt.setLayout, NULL ); rt.setLayout = VK_NULL_HANDLE; }
 	if ( rt.blurSetLayout )  { qvkDestroyDescriptorSetLayout( vk.device, rt.blurSetLayout, NULL ); rt.blurSetLayout = VK_NULL_HANDLE; }
+	if ( rt.tempSetLayout )  { qvkDestroyDescriptorSetLayout( vk.device, rt.tempSetLayout, NULL ); rt.tempSetLayout = VK_NULL_HANDLE; }
 	if ( rt.descPool )       { qvkDestroyDescriptorPool( vk.device, rt.descPool, NULL ); rt.descPool = VK_NULL_HANDLE; }
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		int p;
 		rt.sets[i] = VK_NULL_HANDLE;
 		rt.blurSets[i] = VK_NULL_HANDLE;
+		rt.tempSets[i] = VK_NULL_HANDLE;
+		for ( p = 0; p < 2; p++ ) {
+			if ( rt.tHistView[p][i] ) { qvkDestroyImageView( vk.device, rt.tHistView[p][i], NULL ); rt.tHistView[p][i] = VK_NULL_HANDLE; }
+			if ( rt.tHistImg[p][i] )  { qvkDestroyImage( vk.device, rt.tHistImg[p][i], NULL ); rt.tHistImg[p][i] = VK_NULL_HANDLE; }
+			if ( rt.tHistMem[p][i] )  { qvkFreeMemory( vk.device, rt.tHistMem[p][i], NULL ); rt.tHistMem[p][i] = VK_NULL_HANDLE; }
+		}
 		if ( rt.rtColorView[i] )     { qvkDestroyImageView( vk.device, rt.rtColorView[i], NULL ); rt.rtColorView[i] = VK_NULL_HANDLE; }
 		if ( rt.rtColorImg[i] )      { qvkDestroyImage( vk.device, rt.rtColorImg[i], NULL ); rt.rtColorImg[i] = VK_NULL_HANDLE; }
 		if ( rt.rtColorMem[i] )      { qvkFreeMemory( vk.device, rt.rtColorMem[i], NULL ); rt.rtColorMem[i] = VK_NULL_HANDLE; }
@@ -1294,13 +1367,14 @@ void VK_RT_DestroyTargets( void ) {
 //
 //==========================================================================
 
-static void RT_UpdateUBO( int frame ) {
+static void RT_UpdateUBO( int frame, int readPing, int writePing ) {
 	rtUBO_t		*u = (rtUBO_t *)rt.uboMapped[frame];
 	float		pv[16], m[16];
 	int			i, n;
+	qboolean	temporalOn = ( r_rtTemporal && r_rtTemporal->integer && rt.tempPipe != VK_NULL_HANDLE );
 
 	// invViewProj = inverse( Cz * proj * view ), where Cz remaps clip z [-1,1]->[0,1]
-	// (matches VK_SetModelMatrix's per-column z fix in vk_backend.c).
+	// (matches VK_SetModelMatrix's per-column z fix in vk_backend.c).  m is the full VP.
 	RT_Mat4Mul( rt.camProj, rt.camView, pv );
 	for ( i = 0; i < 4; i++ ) {
 		m[i * 4 + 0] = pv[i * 4 + 0];
@@ -1308,6 +1382,7 @@ static void RT_UpdateUBO( int frame ) {
 		m[i * 4 + 2] = 0.5f * ( pv[i * 4 + 2] + pv[i * 4 + 3] );
 		m[i * 4 + 3] = pv[i * 4 + 3];
 	}
+	Com_Memcpy( rt.camVP, m, sizeof( m ) );
 	if ( !RT_Mat4Inverse( m, u->invViewProj ) ) {
 		memset( u->invViewProj, 0, sizeof( u->invViewProj ) );
 	}
@@ -1339,10 +1414,43 @@ static void RT_UpdateUBO( int frame ) {
 		u->dl[i].color[2] = d->color[2];
 		u->dl[i].color[3] = 0.0f;
 	}
+	// debug: a bright shadow-casting light above the camera so dynamic shadows can be
+	// inspected without firing a weapon (r_rtTestLight = intensity; 0 = off).
+	if ( r_rtTestLight && r_rtTestLight->value > 0.0f && n < RT_MAX_DLIGHTS ) {
+		float in = r_rtTestLight->value;
+		u->dl[n].posRad[0] = rt.camEye[0];
+		u->dl[n].posRad[1] = rt.camEye[1];
+		u->dl[n].posRad[2] = rt.camEye[2] + 200.0f;
+		u->dl[n].posRad[3] = 2000.0f;
+		u->dl[n].color[0] = in; u->dl[n].color[1] = in; u->dl[n].color[2] = in; u->dl[n].color[3] = 0.0f;
+		n++;
+	}
 	u->p1[0] = (float)n;
 	u->p1[1] = rt.worldBuilt ? 1.0f : 0.0f;
 	u->p1[2] = 512.0f;		// indirect gather ray length (world units)
 	u->p1[3] = 0.0f;
+
+	// temporal reprojection data: read the history written 2 frames ago for this slot
+	Com_Memcpy( u->prevViewProj, rt.tHistVP[readPing][frame], sizeof( u->prevViewProj ) );
+	u->prevEye[0] = rt.tHistEye[readPing][frame][0];
+	u->prevEye[1] = rt.tHistEye[readPing][frame][1];
+	u->prevEye[2] = rt.tHistEye[readPing][frame][2];
+	u->prevEye[3] = 0.0f;
+	u->temporal[0] = temporalOn ? 1.0f : 0.0f;
+	u->temporal[1] = 0.2f;									// blend alpha (new-sample weight): lower = cleaner
+															// but more lag/ghosting on moving lights
+
+	u->temporal[2] = ( temporalOn && rt.tHistValid[readPing][frame] ) ? 1.0f : 0.0f;
+	u->temporal[3] = temporalOn ? (float)rt.frameCounter : 0.0f;	// 0 keeps the noise static when off
+
+	// record what this frame writes into the history (read back 2 frames from now)
+	Com_Memcpy( rt.tHistVP[writePing][frame], rt.camVP, sizeof( rt.camVP ) );
+	rt.tHistEye[writePing][frame][0] = rt.camEye[0];
+	rt.tHistEye[writePing][frame][1] = rt.camEye[1];
+	rt.tHistEye[writePing][frame][2] = rt.camEye[2];
+	rt.tHistValid[writePing][frame] = qtrue;
+	rt.tHistPing[frame] = writePing;
+	rt.frameCounter = ( rt.frameCounter + 1 ) & 0xFFFF;
 }
 
 static void RT_WriteDescriptors( int frame ) {
@@ -1427,6 +1535,41 @@ static void RT_WriteBlurDescriptors( int frame ) {
 	qvkUpdateDescriptorSets( vk.device, 4, w, 0, NULL );
 }
 
+static void RT_WriteTempDescriptors( int frame, int readPing, int writePing ) {
+	VkDescriptorImageInfo	gi, depth, histR, histW;
+	VkDescriptorBufferInfo	uboI;
+	VkWriteDescriptorSet	w[5];
+
+	memset( &gi, 0, sizeof( gi ) );
+	gi.imageView = rt.giView[frame];
+	gi.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	memset( &depth, 0, sizeof( depth ) );
+	depth.sampler = rt.depthSampler;
+	depth.imageView = rt.depthSampleView[frame];
+	depth.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( &histR, 0, sizeof( histR ) );
+	histR.sampler = rt.colorSampler;
+	histR.imageView = rt.tHistView[readPing][frame];
+	histR.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( &histW, 0, sizeof( histW ) );
+	histW.imageView = rt.tHistView[writePing][frame];
+	histW.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	uboI.buffer = rt.uboBuf[frame]; uboI.offset = 0; uboI.range = sizeof( rtUBO_t );
+
+	memset( w, 0, sizeof( w ) );
+	w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstSet = rt.tempSets[frame]; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; w[0].pImageInfo = &gi;
+	w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstSet = rt.tempSets[frame]; w[1].dstBinding = 1; w[1].descriptorCount = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1].pImageInfo = &depth;
+	w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstSet = rt.tempSets[frame]; w[2].dstBinding = 2; w[2].descriptorCount = 1; w[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[2].pImageInfo = &histR;
+	w[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[3].dstSet = rt.tempSets[frame]; w[3].dstBinding = 3; w[3].descriptorCount = 1; w[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; w[3].pImageInfo = &histW;
+	w[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[4].dstSet = rt.tempSets[frame]; w[4].dstBinding = 4; w[4].descriptorCount = 1; w[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[4].pBufferInfo = &uboI;
+
+	qvkUpdateDescriptorSets( vk.device, 5, w, 0, NULL );
+}
+
 /*
 ================
 VK_RT_BlitToSwapchain
@@ -1478,6 +1621,7 @@ No-op (offscreen kept as the raster image) until the world AS + targets are read
 */
 void VK_RT_RelightOffscreen( void ) {
 	int			frame = vk.frameIndex;
+	int			readPing, writePing;
 	uint32_t	gx, gy;
 	VkImageBlit	region;
 
@@ -1485,8 +1629,14 @@ void VK_RT_RelightOffscreen( void ) {
 		return;		// leave the offscreen as the rasterised image
 	}
 
-	RT_UpdateUBO( frame );
+	// temporal history ping-pong for this slot: read the data written 2 frames ago
+	// (race-free via frameFence), write to the other ping for 2 frames from now.
+	readPing  = rt.tHistPing[frame];
+	writePing = readPing ^ 1;
+
+	RT_UpdateUBO( frame, readPing, writePing );
 	RT_WriteDescriptors( frame );
+	RT_WriteTempDescriptors( frame, readPing, writePing );
 	RT_WriteBlurDescriptors( frame );
 
 	// inputs -> shader-readable; outputs -> general (storage write)
@@ -1514,12 +1664,34 @@ void VK_RT_RelightOffscreen( void ) {
 	gx = ( vk.renderExtent.width + 7 ) / 8;
 	gy = ( vk.renderExtent.height + 7 ) / 8;
 
-	// pass 1: lighting (writes lit -> rtColor, raw indirect -> giImg)
+	// pass 1: lighting (writes lit -> rtColor, raw per-frame-jittered indirect -> giImg)
 	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipe );
 	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipeLayout, 0, 1, &rt.sets[frame], 0, NULL );
 	qvkCmdDispatch( vk.cmd, gx, gy, 1 );
 
-	// giImg: storage-write -> sampled; rtColor: storage-write -> storage read+write
+	// pass 1.5: temporal accumulation -- reproject the 2-frame-old history into giImg so
+	// the per-frame noise averages out over time instead of sitting static on screen.
+	// giImg: light-write -> temporal read+write (same GENERAL layout, memory hazard only)
+	RT_ImageBarrier( rt.giImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+		VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	RT_ImageBarrier( rt.tHistImg[readPing][frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		rt.tHistLayout[readPing][frame], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		0, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	RT_ImageBarrier( rt.tHistImg[writePing][frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,		// we overwrite every pixel
+		0, VK_ACCESS_SHADER_WRITE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	rt.tHistLayout[readPing][frame]  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	rt.tHistLayout[writePing][frame] = VK_IMAGE_LAYOUT_GENERAL;
+
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.tempPipe );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.tempPipeLayout, 0, 1, &rt.tempSets[frame], 0, NULL );
+	qvkCmdDispatch( vk.cmd, gx, gy, 1 );
+
+	// giImg: temporal-write -> sampled (blur); rtColor: light-write -> storage read+write
 	RT_ImageBarrier( rt.giImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,

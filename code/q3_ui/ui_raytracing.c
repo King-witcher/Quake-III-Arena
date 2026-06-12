@@ -44,7 +44,8 @@ are live cvars applied immediately as they change.
 #define ID_RT_GIINTENSITY	17
 #define ID_RT_AMBIENT		18
 #define ID_RT_RAYS			19
-#define ID_BACK				20
+#define ID_RT_TEMPORAL		20
+#define ID_BACK				21
 
 
 typedef struct {
@@ -62,6 +63,7 @@ typedef struct {
 
 	menulist_s		enable;			// r_raytracing (latched -> Apply)
 	menulist_s		gi;				// r_rtGI
+	menulist_s		temporal;		// r_rtTemporal
 	menuslider_s	giIntensity;	// r_rtGIIntensity * 10
 	menuslider_s	ambient;		// r_rtAmbientScale * 10
 	menuslider_s	rays;			// r_rtRays
@@ -156,6 +158,9 @@ static void UI_RaytracingOptionsMenu_Event( void* ptr, int event ) {
 		break;
 	case ID_RT_RAYS:
 		trap_Cvar_SetValue( "r_rtRays", rtOptionsInfo.rays.curvalue );
+		break;
+	case ID_RT_TEMPORAL:
+		trap_Cvar_SetValue( "r_rtTemporal", rtOptionsInfo.temporal.curvalue );
 		break;
 
 	case ID_BACK:
@@ -278,6 +283,16 @@ static void UI_RaytracingOptionsMenu_Init( void ) {
 	rtOptionsInfo.gi.itemnames				= rt_onoff_names;
 
 	y += BIGCHAR_HEIGHT + 2;
+	rtOptionsInfo.temporal.generic.type		= MTYPE_SPINCONTROL;
+	rtOptionsInfo.temporal.generic.name		= "Temporal Denoise:";
+	rtOptionsInfo.temporal.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	rtOptionsInfo.temporal.generic.callback	= UI_RaytracingOptionsMenu_Event;
+	rtOptionsInfo.temporal.generic.id		= ID_RT_TEMPORAL;
+	rtOptionsInfo.temporal.generic.x		= 400;
+	rtOptionsInfo.temporal.generic.y		= y;
+	rtOptionsInfo.temporal.itemnames		= rt_onoff_names;
+
+	y += BIGCHAR_HEIGHT + 2;
 	rtOptionsInfo.giIntensity.generic.type	= MTYPE_SLIDER;
 	rtOptionsInfo.giIntensity.generic.name	= "GI Intensity:";
 	rtOptionsInfo.giIntensity.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -341,6 +356,7 @@ static void UI_RaytracingOptionsMenu_Init( void ) {
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.raytracing );
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.enable );
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.gi );
+	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.temporal );
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.giIntensity );
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.ambient );
 	Menu_AddItem( &rtOptionsInfo.menu, &rtOptionsInfo.rays );
@@ -350,6 +366,7 @@ static void UI_RaytracingOptionsMenu_Init( void ) {
 	// load live cvar values
 	rtOptionsInfo.enable.curvalue      = trap_Cvar_VariableValue( "r_raytracing" ) != 0;
 	rtOptionsInfo.gi.curvalue          = trap_Cvar_VariableValue( "r_rtGI" ) != 0;
+	rtOptionsInfo.temporal.curvalue    = trap_Cvar_VariableValue( "r_rtTemporal" ) != 0;
 	rtOptionsInfo.giIntensity.curvalue = trap_Cvar_VariableValue( "r_rtGIIntensity" ) * 10.0f;
 	rtOptionsInfo.ambient.curvalue     = trap_Cvar_VariableValue( "r_rtAmbientScale" ) * 10.0f;
 	rtOptionsInfo.rays.curvalue        = trap_Cvar_VariableValue( "r_rtRays" );

@@ -41,6 +41,8 @@ cvar_t	*r_rtGI;
 cvar_t	*r_rtGIIntensity;
 cvar_t	*r_rtAmbientScale;
 cvar_t	*r_rtRays;
+cvar_t	*r_rtTemporal;
+cvar_t	*r_rtTestLight;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -1006,7 +1008,9 @@ void R_Register( void )
 	r_rtGI           = ri.Cvar_Get( "r_rtGI",           "1",    CVAR_ARCHIVE );
 	r_rtGIIntensity  = ri.Cvar_Get( "r_rtGIIntensity",  "1.2",  CVAR_ARCHIVE );
 	r_rtAmbientScale = ri.Cvar_Get( "r_rtAmbientScale", "0.35", CVAR_ARCHIVE );
-	r_rtRays         = ri.Cvar_Get( "r_rtRays",         "6",    CVAR_ARCHIVE );
+	r_rtRays         = ri.Cvar_Get( "r_rtRays",         "3",    CVAR_ARCHIVE );	// temporal accumulation cleans the rest
+	r_rtTemporal     = ri.Cvar_Get( "r_rtTemporal",     "1",    CVAR_ARCHIVE );
+	r_rtTestLight    = ri.Cvar_Get( "r_rtTestLight",    "0",    CVAR_CHEAT );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );

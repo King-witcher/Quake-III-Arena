@@ -32,6 +32,9 @@ layout( set = 0, binding = 6, std140 ) uniform UBO {
 	vec4   screen;     // x=width, y=height, z=1/width, w=1/height
 	vec4   p0;         // x=ambientScale, y=giIntensity, z=numGiRays, w=giEnabled
 	vec4   p1;         // x=numDlights, y=worldBuilt, z=giRayLength, w=unused
+	mat4   prevViewProj;
+	vec4   prevEye;
+	vec4   temporal;   // x=enabled, y=alpha, z=histValid, w=frameCounter
 	DLight dl[MAX_RT_DLIGHTS];
 } ubo;
 
@@ -131,10 +134,18 @@ void main() {
 
 	vec3 Poff = P + N * 1.0;		// push off the surface (world units) to avoid self-hits
 
-	// --- direct: dynamic lights with ray-traced shadows ---
+	// --- direct: dynamic lights with SOFT ray-traced shadows ---
+	// Jitter the shadow ray over a small light disc so shadows get a penumbra; the noise
+	// this adds is removed downstream because the direct term is denoised together with
+	// the indirect (see giOut below).
+	// frame counter rotates the RNG each frame (0 when temporal is off -> static noise);
+	// the temporal pass then averages the per-frame samples into a clean result.
+	uint fc = uint( ubo.temporal.w );
+	uint sseed = hashU( uint( pix.x ) * 48611u + uint( pix.y ) * 9277u + 7331u + fc * 26113u );
 	vec3 direct = vec3( 0.0 );
 	for ( int k = 0; k < nDl; k++ ) {
-		vec3  Lv = ubo.dl[k].posRad.xyz - P;
+		vec3  Lc = ubo.dl[k].posRad.xyz;
+		vec3  Lv = Lc - P;
 		float dist = length( Lv );
 		float r = ubo.dl[k].posRad.w;
 		if ( dist >= r || dist < 1e-3 ) {
@@ -147,32 +158,38 @@ void main() {
 		}
 		float a = 1.0 - dist / r;
 		a = a * a;
-		if ( !occluded( Poff, Ld, dist - 1.0 ) ) {
-			direct += ubo.dl[k].color.rgb * ( ndl * a );
+		vec3 t = normalize( cross( abs( Ld.z ) < 0.999 ? vec3( 0.0, 0.0, 1.0 ) : vec3( 1.0, 0.0, 0.0 ), Ld ) );
+		vec3 bt = cross( Ld, t );
+		const float area = 12.0;	// light radius (world units) -> shadow softness
+		const int   NS = 2;
+		float vis = 0.0;
+		for ( int j = 0; j < NS; j++ ) {
+			float rr = sqrt( rnd( sseed ) ) * area;
+			float ph = 6.2831853 * rnd( sseed );
+			vec3  lp = Lc + t * ( rr * cos( ph ) ) + bt * ( rr * sin( ph ) );
+			vec3  sv = lp - P;
+			float sd = length( sv );
+			if ( !occluded( Poff, sv / sd, sd - 1.0 ) ) {
+				vis += 1.0;
+			}
 		}
+		direct += ubo.dl[k].color.rgb * ( ndl * a * ( vis / float( NS ) ) );
 	}
 
 	// --- indirect: 1-bounce diffuse colour bleeding ---
 	vec3 gi = vec3( 0.0 );
 	if ( giOn && nGi > 0 ) {
-		uint seed = hashU( uint( pix.x ) * 1973u + uint( pix.y ) * 9277u + 26699u );
+		uint seed = hashU( uint( pix.x ) * 1973u + uint( pix.y ) * 9277u + 26699u + fc * 83492791u );
 		for ( int s = 0; s < nGi; s++ ) {
-			float u1 = rnd( seed );
-			float u2 = rnd( seed );
-			gi += gather( Poff, cosineDir( N, u1, u2 ), giLen );
+			gi += gather( Poff, cosineDir( N, rnd( seed ), rnd( seed ) ), giLen );
 		}
 		gi /= float( nGi );
 	}
 
-	// receiver material colour: dynamic light and indirect bounce are modulated by it
-	// so each point is lit in its OWN material colour (a white light on a red wall reads
-	// red, not white), and a tiny floor keeps unlit spots visible instead of pure black.
+	// outColor = baked base + a tiny material floor (smooth -> no denoise).
+	// giOut     = ALL ray-traced lighting (soft-shadowed dynamic + colour-bleed),
+	//             modulated by the receiver material colour, denoised by rt_blur.comp.
 	vec3 A = alb.rgb;
-
-	// split outputs: the smooth term (dim baked base + shadowed dynamic light + floor)
-	// goes straight out; the noisy 1-bounce indirect (pre-modulated by the receiver
-	// albedo) goes to its own buffer to be denoised + composited by rt_blur.comp.
-	vec3 lit = base * ambientScale + A * direct + A * 0.03;
-	imageStore( u_outColor, pix, vec4( lit, 1.0 ) );
-	imageStore( u_giOut, pix, vec4( A * gi, 1.0 ) );
+	imageStore( u_outColor, pix, vec4( base * ambientScale + A * 0.03, 1.0 ) );
+	imageStore( u_giOut, pix, vec4( A * ( direct + gi * giInt ), 1.0 ) );
 }
