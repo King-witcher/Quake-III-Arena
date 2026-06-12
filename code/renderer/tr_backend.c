@@ -43,13 +43,24 @@ void GL_Bind( image_t *image ) {
 
 	if ( !image ) {
 		ri.Printf( PRINT_WARNING, "GL_Bind: NULL image\n" );
+		image = tr.defaultImage;
 		texnum = tr.defaultImage->texnum;
 	} else {
 		texnum = image->texnum;
 	}
 
 	if ( r_nobind->integer && tr.dlightImage ) {		// performance evaluation option
+		image = tr.dlightImage;
 		texnum = tr.dlightImage->texnum;
+	}
+
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		if ( glState.currenttextures[glState.currenttmu] != texnum ) {
+			image->frameUsed = tr.frameCount;
+			glState.currenttextures[glState.currenttmu] = texnum;
+		}
+		VK_Bind( glState.currenttmu, image );
+		return;
 	}
 
 	if ( glState.currenttextures[glState.currenttmu] != texnum ) {
@@ -66,6 +77,15 @@ void GL_SelectTexture( int unit )
 {
 	if ( glState.currenttmu == unit )
 	{
+		return;
+	}
+
+	if ( r_currentApi == RENDER_API_VULKAN )
+	{
+		if ( unit != 0 && unit != 1 ) {
+			ri.Error( ERR_DROP, "GL_SelectTexture: unit = %i", unit );
+		}
+		glState.currenttmu = unit;
 		return;
 	}
 
@@ -96,6 +116,15 @@ void GL_SelectTexture( int unit )
 void GL_BindMultitexture( image_t *image0, GLuint env0, image_t *image1, GLuint env1 ) {
 	int		texnum0, texnum1;
 
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		image_t *i0 = ( r_nobind->integer && tr.dlightImage ) ? tr.dlightImage : image0;
+		image_t *i1 = ( r_nobind->integer && tr.dlightImage ) ? tr.dlightImage : image1;
+		VK_Bind( 0, i0 );
+		VK_Bind( 1, i1 );
+		VK_TexEnv( env1 );
+		return;
+	}
+
 	texnum0 = image0->texnum;
 	texnum1 = image1->texnum;
 
@@ -122,6 +151,11 @@ void GL_BindMultitexture( image_t *image0, GLuint env0, image_t *image1, GLuint 
 ** GL_Cull
 */
 void GL_Cull( int cullType ) {
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_Cull( cullType );
+		return;
+	}
+
 	if ( glState.faceCulling == cullType ) {
 		return;
 	}
@@ -166,6 +200,12 @@ void GL_Cull( int cullType ) {
 */
 void GL_TexEnv( int env )
 {
+	if ( r_currentApi == RENDER_API_VULKAN )
+	{
+		VK_TexEnv( env );
+		return;
+	}
+
 	if ( env == glState.texEnv[glState.currenttmu] )
 	{
 		return;
@@ -203,6 +243,12 @@ void GL_TexEnv( int env )
 void GL_State( unsigned long stateBits )
 {
 	unsigned long diff = stateBits ^ glState.glStateBits;
+
+	if ( r_currentApi == RENDER_API_VULKAN )
+	{
+		VK_State( (unsigned)stateBits );
+		return;
+	}
 
 	if ( !diff )
 	{
@@ -688,6 +734,13 @@ RB_SetGL2D
 void	RB_SetGL2D (void) {
 	backEnd.projection2D = qtrue;
 
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_Set2D();
+		backEnd.refdef.time = ri.Milliseconds();
+		backEnd.refdef.floatTime = backEnd.refdef.time * 0.001f;
+		return;
+	}
+
 	// set 2D virtual screen size
 	qglViewport( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
 	qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
@@ -933,6 +986,13 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
+	// The 3D world/entity backend (RB_RenderDrawSurfList) is brought up under
+	// Vulkan in Phase 4.  Until then skip it so the 2D path can be validated
+	// without the 3D GL calls (which are not dispatched yet) crashing.
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		return (const void *)(cmd + 1);
+	}
+
 	RB_RenderDrawSurfList( cmd->drawSurfs, cmd->numDrawSurfs );
 
 	return (const void *)(cmd + 1);
@@ -949,6 +1009,11 @@ const void	*RB_DrawBuffer( const void *data ) {
 	const drawBufferCommand_t	*cmd;
 
 	cmd = (const drawBufferCommand_t *)data;
+
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_BeginFrame();
+		return (const void *)(cmd + 1);
+	}
 
 	qglDrawBuffer( cmd->buffer );
 
@@ -1036,12 +1101,18 @@ const void	*RB_SwapBuffers( const void *data ) {
 		RB_EndSurface();
 	}
 
-	// texture swapping test
-	if ( r_showImages->integer ) {
+	// texture swapping test (immediate-mode GL debug aid)
+	if ( r_showImages->integer && r_currentApi == RENDER_API_OPENGL ) {
 		RB_ShowImages();
 	}
 
 	cmd = (const swapBuffersCommand_t *)data;
+
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_EndFrame();
+		backEnd.projection2D = qfalse;
+		return (const void *)(cmd + 1);
+	}
 
 	// we measure overdraw by reading back the stencil buffer and
 	// counting up the number of increments that have happened

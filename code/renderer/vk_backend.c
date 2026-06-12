@@ -20,26 +20,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 //
-// vk_backend.c -- the Vulkan command-list executor and frame loop.
+// vk_backend.c -- the Vulkan frame loop and the GPU-leaf functions the shared
+// tr_backend.c / tr_shade.c draw path dispatches to under r_renderapi 1.
 //
-// This is the Vulkan counterpart of the GL-emitting half of tr_backend.c.  The
-// front-end builds the exact same RC_* command list regardless of backend; here
-// we drain it by recording a Vulkan command buffer and presenting.
+// The command list is drained by the SAME RB_ExecuteRenderCommands as OpenGL;
+// the RB_* handlers and the tr_shade.c stage iterators run unchanged and route
+// their leaf operations (GL_State / GL_Bind / R_DrawElements / RB_SetGL2D /
+// frame begin+present) here.  This keeps the parity-critical front-of-backend
+// (deforms, rgbGen/alphaGen, tcGen/tcMod, fog, dlight) as a single shared
+// implementation.
 //
 #include "vk_local.h"
 
 #define VK_TIMEOUT_NS	( (uint64_t)1000000000 * 5 )	// 5s acquire/fence timeout
 
-//
-// transient color set by RC_SET_COLOR, consumed by 2D drawing (Phase 2+)
-//
-static float	vk_color2D[4] = { 1, 1, 1, 1 };
-
 /*
 ================
 VK_ImageBarrier
-
-Single-image layout transition recorded into the active command buffer.
 ================
 */
 static void VK_ImageBarrier( VkImage image, VkImageAspectFlags aspect,
@@ -70,10 +67,10 @@ static void VK_ImageBarrier( VkImage image, VkImageAspectFlags aspect,
 VK_BeginFrame
 
 Acquire the next swapchain image and open the frame's command buffer inside a
-dynamic-rendering pass that clears color + depth.  Invoked from RC_DRAW_BUFFER.
+dynamic-rendering pass that clears color + depth.  Dispatched from RB_DrawBuffer.
 ================
 */
-static void VK_BeginFrame( void ) {
+void VK_BeginFrame( void ) {
 	VkCommandBufferBeginInfo	beginInfo;
 	VkRenderingAttachmentInfo	colorAttachment;
 	VkRenderingAttachmentInfo	depthAttachment;
@@ -83,30 +80,31 @@ static void VK_BeginFrame( void ) {
 	VkResult					res;
 	int							frame = vk.frameIndex;
 
-	if ( !vk.initialized ) {
+	if ( !vk.initialized || vk.frameStarted ) {
 		return;
 	}
 
-	// make sure we have a valid swapchain (window may have been resized/minimized)
 	if ( !vk.swapchainValid ) {
 		if ( !VK_RecreateSwapchain() ) {
-			return;	// still not presentable (e.g. minimized)
+			return;	// minimized / not presentable
 		}
 	}
 
-	// wait until the GPU is done with this frame slot
 	qvkWaitForFences( vk.device, 1, &vk.frameFence[frame], VK_TRUE, VK_TIMEOUT_NS );
 
 	res = qvkAcquireNextImageKHR( vk.device, vk.swapchain, VK_TIMEOUT_NS,
 		vk.imageAcquired[frame], VK_NULL_HANDLE, &vk.swapchainIndex );
 	if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
 		VK_RecreateSwapchain();
-		return;	// skip this frame; the acquire semaphore was not signaled
+		return;
 	}
 	if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
 		ri.Printf( PRINT_ALL, "vkAcquireNextImageKHR: %s\n", VK_ResultString( res ) );
 		return;
 	}
+
+	// the GPU is done with this frame slot: its streaming rings are free to reuse
+	VK_ResetStreaming();
 
 	vk.cmd = vk.commandBuffers[frame];
 	qvkResetCommandBuffer( vk.cmd, 0 );
@@ -116,13 +114,11 @@ static void VK_BeginFrame( void ) {
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	qvkBeginCommandBuffer( vk.cmd, &beginInfo );
 
-	// swapchain image: UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
 	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
 
-	// depth image: UNDEFINED -> DEPTH_STENCIL_ATTACHMENT_OPTIMAL (contents cleared below)
 	VK_ImageBarrier( vk.depthImage, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		0, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -135,11 +131,9 @@ static void VK_BeginFrame( void ) {
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	// Phase 1 proof-of-life clear colour (a distinctive blue).  Later phases
-	// switch this to Q3's actual clear behaviour.
-	colorAttachment.clearValue.color.float32[0] = 0.10f;
-	colorAttachment.clearValue.color.float32[1] = 0.20f;
-	colorAttachment.clearValue.color.float32[2] = 0.35f;
+	colorAttachment.clearValue.color.float32[0] = 0.0f;
+	colorAttachment.clearValue.color.float32[1] = 0.0f;
+	colorAttachment.clearValue.color.float32[2] = 0.0f;
 	colorAttachment.clearValue.color.float32[3] = 1.0f;
 
 	memset( &depthAttachment, 0, sizeof( depthAttachment ) );
@@ -153,8 +147,6 @@ static void VK_BeginFrame( void ) {
 
 	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
 	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	renderingInfo.renderArea.offset.x = 0;
-	renderingInfo.renderArea.offset.y = 0;
 	renderingInfo.renderArea.extent = vk.extent;
 	renderingInfo.layerCount = 1;
 	renderingInfo.colorAttachmentCount = 1;
@@ -163,13 +155,9 @@ static void VK_BeginFrame( void ) {
 
 	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
 
-	// default full-screen viewport / scissor (dynamic state)
 	memset( &viewport, 0, sizeof( viewport ) );
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
 	viewport.width = (float)vk.extent.width;
 	viewport.height = (float)vk.extent.height;
-	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 	qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
 
@@ -178,6 +166,11 @@ static void VK_BeginFrame( void ) {
 	scissor.extent = vk.extent;
 	qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
 
+	// reset the per-draw recording state
+	memset( &vk.draw, 0, sizeof( vk.draw ) );
+	glState.glStateBits = 0;
+	glState.faceCulling = -1;
+
 	vk.frameStarted = qtrue;
 }
 
@@ -185,11 +178,10 @@ static void VK_BeginFrame( void ) {
 ================
 VK_EndFrame
 
-Close the dynamic-rendering pass, submit and present.  Invoked from
-RC_SWAP_BUFFERS.
+Close the pass, submit and present.  Dispatched from RB_SwapBuffers.
 ================
 */
-static void VK_EndFrame( void ) {
+void VK_EndFrame( void ) {
 	VkSubmitInfo			submitInfo;
 	VkPresentInfoKHR		presentInfo;
 	VkPipelineStageFlags	waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -197,12 +189,11 @@ static void VK_EndFrame( void ) {
 	int						frame = vk.frameIndex;
 
 	if ( !vk.frameStarted ) {
-		return;	// frame was skipped (swapchain out of date / minimized)
+		return;
 	}
 
 	qvkCmdEndRendering( vk.cmd );
 
-	// swapchain image: COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC
 	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
@@ -210,7 +201,6 @@ static void VK_EndFrame( void ) {
 
 	qvkEndCommandBuffer( vk.cmd );
 
-	// reset the fence only now that we are certain to submit
 	qvkResetFences( vk.device, 1, &vk.frameFence[frame] );
 
 	memset( &submitInfo, 0, sizeof( submitInfo ) );
@@ -245,118 +235,177 @@ static void VK_EndFrame( void ) {
 
 //==========================================================================
 //
-// command list executor
+// dispatched GL-leaf equivalents
 //
 //==========================================================================
 
-static const void *VK_SetColor( const void *data ) {
-	const setColorCommand_t *cmd = (const setColorCommand_t *)data;
-	vk_color2D[0] = cmd->color[0];
-	vk_color2D[1] = cmd->color[1];
-	vk_color2D[2] = cmd->color[2];
-	vk_color2D[3] = cmd->color[3];
-	return (const void *)(cmd + 1);
-}
-
-static const void *VK_StretchPic( const void *data ) {
-	const stretchPicCommand_t *cmd = (const stretchPicCommand_t *)data;
-	// Phase 2 will record real 2D geometry here.
-	return (const void *)(cmd + 1);
-}
-
-static const void *VK_DrawSurfs( const void *data ) {
-	const drawSurfsCommand_t *cmd = (const drawSurfsCommand_t *)data;
-	// Phase 4 will record the 3D world/entity draws here.
-	return (const void *)(cmd + 1);
-}
-
-static const void *VK_DrawBuffer( const void *data ) {
-	const drawBufferCommand_t *cmd = (const drawBufferCommand_t *)data;
-	VK_BeginFrame();
-	return (const void *)(cmd + 1);
-}
-
-static const void *VK_SwapBuffers( const void *data ) {
-	const swapBuffersCommand_t *cmd = (const swapBuffersCommand_t *)data;
-	VK_EndFrame();
-	return (const void *)(cmd + 1);
-}
-
 /*
 ================
-VK_ExecuteRenderCommands
+VK_Set2D
 
-bk.ExecuteRenderCommands leaf -- mirrors RB_ExecuteRenderCommands.
+RB_SetGL2D leaf: build the orthographic MVP (screen pixels -> Vulkan clip) and a
+full-screen viewport/scissor.  Vulkan's clip space already has +Y downward, so
+screen (0,0) maps to the top-left with no extra flip.
 ================
 */
-static void VK_ExecuteRenderCommands( const void *data ) {
-	int t1, t2;
+void VK_Set2D( void ) {
+	VkViewport	viewport;
+	VkRect2D	scissor;
+	float		w = (float)glConfig.vidWidth;
+	float		h = (float)glConfig.vidHeight;
 
-	t1 = ri.Milliseconds();
-	backEnd.smpFrame = 0;	// SMP is disabled for the Vulkan backend
+	// column-major ortho: x [0,w]->[-1,1], y [0,h]->[-1,1] (down), z [0,1]->[0,1]
+	Com_Memset( vk.draw.mvp, 0, sizeof( vk.draw.mvp ) );
+	vk.draw.mvp[0]  = 2.0f / w;
+	vk.draw.mvp[5]  = 2.0f / h;
+	vk.draw.mvp[10] = 1.0f;
+	vk.draw.mvp[12] = -1.0f;
+	vk.draw.mvp[13] = -1.0f;
+	vk.draw.mvp[15] = 1.0f;
 
-	while ( 1 ) {
-		switch ( *(const int *)data ) {
-		case RC_SET_COLOR:
-			data = VK_SetColor( data );
-			break;
-		case RC_STRETCH_PIC:
-			data = VK_StretchPic( data );
-			break;
-		case RC_DRAW_SURFS:
-			data = VK_DrawSurfs( data );
-			break;
-		case RC_DRAW_BUFFER:
-			data = VK_DrawBuffer( data );
-			break;
-		case RC_SWAP_BUFFERS:
-			data = VK_SwapBuffers( data );
-			break;
-		case RC_SCREENSHOT:
-			// Phase 8: vkCmd readback.  Skip the command for now.
-			data = (const void *)( (const screenshotCommand_t *)data + 1 );
-			break;
-		case RC_END_OF_LIST:
-		default:
-			t2 = ri.Milliseconds();
-			backEnd.pc.msec = t2 - t1;
-			return;
-		}
+	vk.draw.stateBits = GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+	vk.draw.cullType = CT_TWO_SIDED;
+
+	if ( vk.frameStarted ) {
+		memset( &viewport, 0, sizeof( viewport ) );
+		viewport.width = w;
+		viewport.height = h;
+		viewport.maxDepth = 1.0f;
+		qvkCmdSetViewport( vk.cmd, 0, 1, &viewport );
+
+		scissor.offset.x = 0;
+		scissor.offset.y = 0;
+		scissor.extent = vk.extent;
+		qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
 	}
 }
 
-//==========================================================================
-//
-// texture / state leaves (real implementations arrive in Phase 3+)
-//
-//==========================================================================
+/*
+================
+VK_State / VK_Cull -- record pipeline state for the next draw
+================
+*/
+void VK_State( unsigned stateBits ) {
+	vk.draw.stateBits = stateBits;
+	glState.glStateBits = stateBits;
+}
+
+void VK_Cull( int cullType ) {
+	vk.draw.cullType = cullType;
+	glState.faceCulling = cullType;
+}
+
+void VK_TexEnv( int env ) {
+	vk.draw.multitexEnv = env;
+}
 
 /*
 ================
-VK_CreateImage
-
-Phase 1 stub: record the upload dimensions so the shared image_t bookkeeping and
-glConfig-driven sizing stay correct, but do not touch the GPU yet.  Phase 3
-replaces this with a real VkImage + staging upload.
+VK_Bind -- record the bound texture for a texture unit
 ================
 */
-static void VK_CreateImage( image_t *image, const byte *pic, qboolean isLightmap ) {
-	image->uploadWidth = image->width;
-	image->uploadHeight = image->height;
-	image->internalFormat = 4;		// RGBA
-	image->vkData = NULL;
+void VK_Bind( int tmu, image_t *image ) {
+	if ( tmu < 0 || tmu > 1 ) {
+		return;
+	}
+	vk.draw.image[tmu] = image;
 }
 
-static void VK_DeleteImages( void ) {
-	// Phase 3: destroy VkImages / free descriptor sets.  No GPU objects yet.
+/*
+================
+VK_DrawElements
+
+R_DrawElements leaf: stream the current tess batch into the frame's rings, pick
+the pipeline for the recorded state, bind textures + MVP and issue the draw.
+================
+*/
+void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
+	static vkVertex_t	verts[SHADER_MAX_VERTEXES];
+	vkPipelineKey_t		key;
+	VkPipeline			pipeline;
+	VkPipelineLayout	layout;
+	VkDeviceSize		vtxOffset, idxOffset;
+	int					numVerts = tess.numVertexes;
+	int					numSets;
+	int					i;
+
+	if ( !vk.frameStarted || numVerts <= 0 || numIndexes <= 0 ) {
+		return;
+	}
+	if ( numVerts > SHADER_MAX_VERTEXES ) {
+		return;
+	}
+
+	// build interleaved vertices from the tess arrays
+	for ( i = 0; i < numVerts; i++ ) {
+		verts[i].xyz[0] = tess.xyz[i][0];
+		verts[i].xyz[1] = tess.xyz[i][1];
+		verts[i].xyz[2] = tess.xyz[i][2];
+		Com_Memcpy( verts[i].color, tess.svars.colors[i], 4 );
+		verts[i].tc0[0] = tess.svars.texcoords[0][i][0];
+		verts[i].tc0[1] = tess.svars.texcoords[0][i][1];
+		verts[i].tc1[0] = tess.svars.texcoords[1][i][0];
+		verts[i].tc1[1] = tess.svars.texcoords[1][i][1];
+	}
+
+	if ( !VK_StreamVertexes( verts, numVerts, &vtxOffset ) ) {
+		return;
+	}
+	if ( !VK_StreamIndexes( indexes, numIndexes, &idxOffset ) ) {
+		return;
+	}
+
+	// pipeline key
+	Com_Memset( &key, 0, sizeof( key ) );
+	key.stateBits = vk.draw.stateBits;
+	key.cullType = (byte)vk.draw.cullType;
+	key.mirror = backEnd.viewParms.isMirror ? 1 : 0;
+	key.shaderType = ( vk.draw.image[1] && vk.draw.multitexEnv ) ? VK_SHADER_MULTI : VK_SHADER_SINGLE;
+	key.multitexEnv = (byte)vk.draw.multitexEnv;
+	key.polygonOffset = ( tess.shader && tess.shader->polygonOffset ) ? 1 : 0;
+
+	// the multitexture shader does not exist yet (Phase 5): fall back to single
+	if ( key.shaderType == VK_SHADER_MULTI && !vk.shaderVert[VK_SHADER_MULTI] ) {
+		key.shaderType = VK_SHADER_SINGLE;
+	}
+	numSets = ( key.shaderType == VK_SHADER_MULTI ) ? 2 : 1;
+	layout = vk.pipelineLayout[numSets];
+
+	pipeline = VK_GetPipeline( &key );
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+
+	qvkCmdPushConstants( vk.cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 16 * sizeof( float ), vk.draw.mvp );
+
+	// bind textures (TMU0 always; TMU1 for the multitexture pipeline)
+	if ( vk.draw.image[0] && vk.draw.image[0]->vkData ) {
+		vkimage_t *vki = (vkimage_t *)vk.draw.image[0]->vkData;
+		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &vki->descriptor, 0, NULL );
+	}
+	if ( numSets == 2 && vk.draw.image[1] && vk.draw.image[1]->vkData ) {
+		vkimage_t *vki = (vkimage_t *)vk.draw.image[1]->vkData;
+		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &vki->descriptor, 0, NULL );
+	}
+
+	// depth bias (dynamic state is always present in the pipeline)
+	if ( key.polygonOffset ) {
+		qvkCmdSetDepthBias( vk.cmd, r_offsetUnits->value, 0.0f, r_offsetFactor->value );
+	} else {
+		qvkCmdSetDepthBias( vk.cmd, 0.0f, 0.0f, 0.0f );
+	}
+
+	qvkCmdBindVertexBuffers( vk.cmd, 0, 1, &vk.vertexBuffer[vk.frameIndex], &vtxOffset );
+	qvkCmdBindIndexBuffer( vk.cmd, vk.indexBuffer[vk.frameIndex], idxOffset, VK_INDEX_TYPE_UINT32 );
+	qvkCmdDrawIndexed( vk.cmd, numIndexes, 1, 0, 0, 0 );
 }
 
-static void VK_TextureMode( const char *string ) {
-	// Phase 3: rebuild the sampler cache.  No-op until samplers exist.
-}
+/*
+================
+VK_SetDefaultState
 
+bk.SetDefaultState leaf -- Vulkan keeps no global fixed-function state.
+================
+*/
 static void VK_SetDefaultState( void ) {
-	// Vulkan keeps no global fixed-function state; pipeline objects carry it.
 	memset( &glState, 0, sizeof( glState ) );
 }
 
@@ -364,7 +413,9 @@ static void VK_SetDefaultState( void ) {
 ================
 VKBE_Install
 
-Point the dispatch table at the Vulkan leaves.
+Point the dispatch table at the Vulkan leaves.  The command-list executor is the
+SAME RB_ExecuteRenderCommands as OpenGL -- the RB_* handlers branch to the VK
+frame/draw leaves internally.
 ================
 */
 void VKBE_Install( backend_t *b ) {
@@ -373,7 +424,7 @@ void VKBE_Install( backend_t *b ) {
 	b->Shutdown              = VK_Shutdown;
 	b->SetDefaultState       = VK_SetDefaultState;
 	b->GfxInfo               = VK_GfxInfo;
-	b->ExecuteRenderCommands = VK_ExecuteRenderCommands;
+	b->ExecuteRenderCommands = RB_ExecuteRenderCommands;
 	b->CreateImage           = VK_CreateImage;
 	b->DeleteImages          = VK_DeleteImages;
 	b->TextureMode           = VK_TextureMode;

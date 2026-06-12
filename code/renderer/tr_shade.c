@@ -163,6 +163,11 @@ without compiled vertex arrays.
 static void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	int		primitives;
 
+	if ( r_currentApi == RENDER_API_VULKAN ) {
+		VK_DrawElements( numIndexes, indexes );
+		return;
+	}
+
 	primitives = r_primitives->integer;
 
 	// default is to use triangles if compiled vertex arrays are present

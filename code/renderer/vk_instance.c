@@ -557,6 +557,12 @@ static void VK_DestroyAll( void ) {
 		qvkDeviceWaitIdle( vk.device );
 	}
 
+	if ( vk.device ) {
+		VK_ShutdownPipelines();
+		VK_ShutdownImageSystem();
+		VK_DestroyStreamingBuffers();
+	}
+
 	VK_DestroyFrameResources();
 	VK_DestroySwapchain();
 
@@ -656,6 +662,14 @@ qboolean VK_Init( void ) {
 		VK_DestroyAll();
 		return qfalse;
 	}
+
+	// resources for the textured draw path
+	VK_CreateStreamingBuffers();
+	VK_InitPipelines();			// descriptor/pipeline layouts + shaders (before any image)
+	VK_InitImageSystem();		// descriptor pool + sampler cache
+
+	// the shared stage iterators still issue GL client-array calls; make them inert
+	VK_InstallInertGLProcs();
 
 	VK_FillConfig();
 

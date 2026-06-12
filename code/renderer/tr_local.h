@@ -1266,9 +1266,29 @@ extern backend_t	bk;
 void		GLBE_Install( backend_t *b );
 void		VKBE_Install( backend_t *b );
 
+// Vulkan backend leaves invoked from the shared backend path (tr_backend.c /
+// tr_shade.c) when r_currentApi == RENDER_API_VULKAN.  Declared here (free of
+// Vulkan types) so those files need not include the Vulkan headers.  Implemented
+// in vk_backend.c.
+void		VK_Set2D( void );
+void		VK_State( unsigned stateBits );
+void		VK_Cull( int cullType );
+void		VK_TexEnv( int env );
+void		VK_Bind( int tmu, image_t *image );
+void		VK_DrawElements( int numIndexes, const glIndex_t *indexes );
+void		VK_BeginFrame( void );
+void		VK_EndFrame( void );
+
 // OpenGL texture leaves (tr_image.c) exposed so the GL installer can point at them
 void		GL_CreateImage( image_t *image, const byte *pic, qboolean isLightmap );
 void		GL_DeleteImages( void );
+
+// shared CPU image processing (tr_image.c) reused by the Vulkan upload path so
+// the final pixels are identical to OpenGL (power-of-two resample, gamma/intensity
+// scaling, box mip generation)
+void		ResampleTexture( unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight );
+void		R_LightScaleTexture( unsigned *in, int inwidth, int inheight, qboolean only_gamma );
+void		R_MipMap( byte *in, int width, int height );
 
 /*
 ====================================================================

@@ -40,6 +40,46 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // We target Vulkan 1.3 core (dynamic rendering, no legacy render-pass objects).
 #define VK_TARGET_API_VERSION	VK_API_VERSION_1_3
 
+// Per-frame host-visible streaming buffers for the dynamic tess geometry.
+#define VK_VERTEX_BUFFER_SIZE	( 16 * 1024 * 1024 )
+#define VK_INDEX_BUFFER_SIZE	(  4 * 1024 * 1024 )
+
+// Interleaved vertex written from the tess arrays; matches the GL client arrays
+// (position, per-vertex RGBA, two texcoord sets).  32 bytes, 4-byte aligned.
+typedef struct {
+	float		xyz[3];
+	byte		color[4];
+	float		tc0[2];
+	float		tc1[2];
+} vkVertex_t;
+
+// Which SPIR-V pair a pipeline uses.
+typedef enum {
+	VK_SHADER_SINGLE,			// vertexColor * tex0  (+ optional alpha test)
+	VK_SHADER_MULTI,			// two-texture combine (Phase 5)
+	VK_SHADER_COUNT
+} vkShaderType_t;
+
+// Per-image GPU resources; image_t.vkData points at one of these.
+typedef struct {
+	VkImage			image;
+	VkDeviceMemory	memory;
+	VkImageView		view;
+	VkSampler		sampler;		// from the sampler cache (not owned)
+	VkDescriptorSet	descriptor;		// set 0: combined image sampler
+} vkimage_t;
+
+// Key that uniquely identifies a graphics pipeline (hashed + cached).
+typedef struct {
+	unsigned		stateBits;		// GLS_* (blend/depth/polymode/atest)
+	byte			cullType;		// cullType_t
+	byte			mirror;			// backEnd.viewParms.isMirror (flips frontFace)
+	byte			shaderType;		// vkShaderType_t
+	byte			multitexEnv;	// GL_MODULATE/GL_ADD/GL_REPLACE for unit 1
+	byte			polygonOffset;	// shader_t.polygonOffset -> depthBias
+	byte			pad[3];
+} vkPipelineKey_t;
+
 //
 // vk -- the single global holding all Vulkan device-level state.  Cleared to
 // zero on shutdown so a stale handle is never reused across a vid_restart.
@@ -95,6 +135,33 @@ typedef struct {
 	VkCommandBuffer		cmd;				// active primary command buffer
 	qboolean			frameStarted;		// between begin and present
 	qboolean			swapchainValid;		// false => needs (re)creation
+
+	// per-frame host-visible vertex/index streaming rings (vk_memory.c)
+	VkBuffer			vertexBuffer[VK_NUM_FRAMES];
+	VkDeviceMemory		vertexMemory[VK_NUM_FRAMES];
+	byte				*vertexMapped[VK_NUM_FRAMES];
+	VkBuffer			indexBuffer[VK_NUM_FRAMES];
+	VkDeviceMemory		indexMemory[VK_NUM_FRAMES];
+	byte				*indexMapped[VK_NUM_FRAMES];
+	uint32_t			vertexOffset;		// bytes used this frame
+	uint32_t			indexOffset;
+
+	// pipelines / descriptors / shaders (vk_pipeline.c)
+	VkDescriptorSetLayout	descriptorSetLayout;	// set N: one combined image sampler
+	VkPipelineLayout		pipelineLayout[3];		// index = number of descriptor sets (1 or 2)
+	VkPipelineCache			pipelineCache;
+	VkShaderModule			shaderVert[VK_SHADER_COUNT];
+	VkShaderModule			shaderFrag[VK_SHADER_COUNT];
+	VkDescriptorPool		descriptorPool;
+
+	// live draw-recording state (set by the dispatched GL_* leaves)
+	struct {
+		float		mvp[16];			// push constant
+		unsigned	stateBits;			// last GL_State
+		int			cullType;			// last GL_Cull
+		image_t		*image[2];			// bound texture per TMU
+		int			multitexEnv;		// last GL_TexEnv on unit 1
+	} draw;
 } vk_t;
 
 extern vk_t	vk;
@@ -131,9 +198,40 @@ qboolean	VK_CreateFrameResources( void );
 void		VK_DestroyFrameResources( void );
 
 //
+// vk_memory.c -- device-memory helpers + per-frame vertex/index streaming
+//
+VkDeviceMemory	VK_AllocBufferMemory( VkBuffer buffer, VkMemoryPropertyFlags props, void **mapped );
+qboolean	VK_CreateStreamingBuffers( void );
+void		VK_DestroyStreamingBuffers( void );
+void		VK_ResetStreaming( void );							// call at frame start
+// append into the current frame's rings; return byte offsets (or qfalse on overflow)
+qboolean	VK_StreamVertexes( const vkVertex_t *verts, int count, VkDeviceSize *outOffset );
+qboolean	VK_StreamIndexes( const glIndex_t *indexes, int count, VkDeviceSize *outOffset );
+
+//
+// vk_image.c -- texture upload, samplers, descriptor sets
+//
+void		VK_CreateImage( image_t *image, const byte *pic, qboolean isLightmap );
+void		VK_DeleteImages( void );
+void		VK_TextureMode( const char *string );
+qboolean	VK_InitImageSystem( void );							// descriptor pool, sampler cache
+void		VK_ShutdownImageSystem( void );
+
+//
+// vk_pipeline.c -- descriptor/pipeline layouts, pipeline cache
+//
+qboolean	VK_InitPipelines( void );
+void		VK_ShutdownPipelines( void );
+VkPipeline	VK_GetPipeline( const vkPipelineKey_t *key );
+
+//
 // vk_backend.c
 //
 void		VKBE_Install( backend_t *b );		// fill the dispatch table with VK_* leaves
+// (the dispatched GL-leaf equivalents VK_Set2D/VK_State/VK_Cull/VK_Bind/
+//  VK_DrawElements/VK_BeginFrame/VK_EndFrame are declared in tr_local.h so the
+//  shared backend files can call them without pulling in the Vulkan headers.)
+void		VK_InstallInertGLProcs( void );		// point GL array/immediate qgl* at no-ops
 
 //
 // win_vk.c -- Win32 platform / surface layer (parallel to win_glimp.c)

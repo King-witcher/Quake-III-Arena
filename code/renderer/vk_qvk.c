@@ -102,6 +102,48 @@ qboolean QVK_InitDeviceFunctions( VkDevice device ) {
 	return ok;
 }
 
+//
+// Inert OpenGL stubs.
+//
+// The shared tr_shade.c stage iterators still issue GL client-array and a few
+// immediate-mode calls (qglVertexPointer, qglEnableClientState, qglEnable, ...).
+// Under Vulkan the geometry is read straight from tess and these calls carry no
+// meaning -- but the qgl* pointers would be NULL (QGL_Init never ran), so we
+// point exactly that set at no-ops.  Real opengl32 entry points overwrite these
+// again via QGL_Init if the backend switches back to GL on a vid_restart.
+//
+static void APIENTRY VKstub_ClientState( GLenum a ) {}
+static void APIENTRY VKstub_Pointer( GLint a, GLenum b, GLsizei c, const GLvoid *d ) {}
+static void APIENTRY VKstub_Cap( GLenum a ) {}
+static void APIENTRY VKstub_PolygonOffset( GLfloat a, GLfloat b ) {}
+static void APIENTRY VKstub_PolygonMode( GLenum a, GLenum b ) {}
+static void APIENTRY VKstub_DepthRange( GLclampd a, GLclampd b ) {}
+static void APIENTRY VKstub_Color3f( GLfloat a, GLfloat b, GLfloat c ) {}
+static void APIENTRY VKstub_Color4ubv( const GLubyte *v ) {}
+static void APIENTRY VKstub_Begin( GLenum a ) {}
+static void APIENTRY VKstub_End( void ) {}
+static void APIENTRY VKstub_Vertex3fv( const GLfloat *v ) {}
+static void APIENTRY VKstub_ArrayElement( GLint i ) {}
+
+void VK_InstallInertGLProcs( void ) {
+	qglEnableClientState  = VKstub_ClientState;
+	qglDisableClientState = VKstub_ClientState;
+	qglVertexPointer      = VKstub_Pointer;
+	qglColorPointer       = VKstub_Pointer;
+	qglTexCoordPointer    = VKstub_Pointer;
+	qglEnable             = VKstub_Cap;
+	qglDisable            = VKstub_Cap;
+	qglPolygonOffset      = VKstub_PolygonOffset;
+	qglPolygonMode        = VKstub_PolygonMode;
+	qglDepthRange         = VKstub_DepthRange;
+	qglColor3f            = VKstub_Color3f;
+	qglColor4ubv          = VKstub_Color4ubv;
+	qglBegin              = VKstub_Begin;
+	qglEnd                = VKstub_End;
+	qglVertex3fv          = VKstub_Vertex3fv;
+	qglArrayElement       = VKstub_ArrayElement;
+}
+
 /*
 ===============
 QVK_ClearProcAddresses
