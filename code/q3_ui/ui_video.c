@@ -38,7 +38,7 @@ DRIVER INFORMATION MENU
 #define DRIVERINFO_BACK0	"menu/art/back_0"
 #define DRIVERINFO_BACK1	"menu/art/back_1"
 
-static char* driverinfo_artlist[] = 
+static char* driverinfo_artlist[] =
 {
 	DRIVERINFO_FRAMEL,
 	DRIVERINFO_FRAMER,
@@ -271,6 +271,7 @@ typedef struct {
 	menulist_s		mode;
 	menulist_s		driver;
 	menulist_s		renderapi;
+	menulist_s		antialiasing;
 	menuslider_s	tq;
 	menulist_s  	fs;
 	menulist_s  	lighting;
@@ -298,10 +299,16 @@ typedef struct
 	int driver;
 	qboolean extensions;
 	int renderapi;
+	int antialiasing;
 } InitialVideoOptions_s;
 
 static InitialVideoOptions_s	s_ivo;
-static graphicsoptions_t		s_graphicsoptions;	
+static graphicsoptions_t		s_graphicsoptions;
+
+// Antialiasing technique names.  FXAA/SSAA are Vulkan-only, so OpenGL only ever
+// offers "Off" (the menu swaps the list based on the selected Render API).
+static const char *aa_names_gl[] = { "Off", 0 };
+static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 4x", 0 };
 
 static InitialVideoOptions_s s_ivo_templates[] =
 {
@@ -334,6 +341,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.colordepth  = s_graphicsoptions.colordepth.curvalue;
 	s_ivo.driver      = s_graphicsoptions.driver.curvalue;
 	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
+	s_ivo.antialiasing = s_graphicsoptions.antialiasing.curvalue;
 	s_ivo.mode        = s_graphicsoptions.mode.curvalue;
 	s_ivo.fullscreen  = s_graphicsoptions.fs.curvalue;
 	s_ivo.extensions  = s_graphicsoptions.allow_extensions.curvalue;
@@ -415,6 +423,21 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		}
 	}
 
+	// FXAA/SSAA are Vulkan-only: under OpenGL the antialiasing control offers
+	// only "Off"; under Vulkan it offers Off/FXAA/SSAA.  Swap the name list (and
+	// keep numitems in sync, as SpinControl_Init does) based on the Render API.
+	if ( s_graphicsoptions.renderapi.curvalue == 0 )
+	{
+		s_graphicsoptions.antialiasing.itemnames = aa_names_gl;
+		s_graphicsoptions.antialiasing.numitems  = 1;
+		s_graphicsoptions.antialiasing.curvalue  = 0;
+	}
+	else
+	{
+		s_graphicsoptions.antialiasing.itemnames = aa_names_vk;
+		s_graphicsoptions.antialiasing.numitems  = 3;
+	}
+
 	s_graphicsoptions.apply.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 
 	if ( s_ivo.mode != s_graphicsoptions.mode.curvalue )
@@ -449,6 +472,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
+	if ( s_ivo.antialiasing != s_graphicsoptions.antialiasing.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
 	if ( s_ivo.texturebits != s_graphicsoptions.texturebits.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
@@ -463,7 +490,7 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	}
 
 	GraphicsOptions_CheckConfig();
-}	
+}
 
 /*
 =================
@@ -493,6 +520,7 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	trap_Cvar_SetValue( "r_fullscreen", s_graphicsoptions.fs.curvalue );
 	trap_Cvar_Set( "r_glDriver", ( char * ) s_drivers[s_graphicsoptions.driver.curvalue] );
 	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
+	trap_Cvar_SetValue( "r_antialiasing", s_graphicsoptions.antialiasing.curvalue );
 	switch ( s_graphicsoptions.colordepth.curvalue )
 	{
 	case 0:
@@ -646,6 +674,12 @@ static void GraphicsOptions_SetMenuItems( void )
 	}
 	s_graphicsoptions.fs.curvalue = trap_Cvar_VariableValue("r_fullscreen");
 	s_graphicsoptions.renderapi.curvalue = trap_Cvar_VariableValue("r_renderapi") != 0;
+	s_graphicsoptions.antialiasing.curvalue = trap_Cvar_VariableValue("r_antialiasing");
+	if ( s_graphicsoptions.antialiasing.curvalue < 0 || s_graphicsoptions.antialiasing.curvalue > 2
+		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
+		// FXAA/SSAA are Vulkan-only, so force Off under OpenGL (and on bad values)
+		s_graphicsoptions.antialiasing.curvalue = 0;
+	}
 	s_graphicsoptions.allow_extensions.curvalue = trap_Cvar_VariableValue("r_allowExtensions");
 	s_graphicsoptions.tq.curvalue = 3-trap_Cvar_VariableValue( "r_picmip");
 	if ( s_graphicsoptions.tq.curvalue < 0 )
@@ -775,7 +809,7 @@ void GraphicsOptions_MenuInit( void )
 		0
 	};
 
-	static const char *resolutions[] = 
+	static const char *resolutions[] =
 	{
 		"320x240",
 		"400x300",
@@ -885,7 +919,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
-	y = 240 - 6 * (BIGCHAR_HEIGHT + 2);
+	y = 240 - 7 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -912,6 +946,17 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.renderapi.generic.x     = 400;
 	s_graphicsoptions.renderapi.generic.y     = y;
 	s_graphicsoptions.renderapi.itemnames     = renderapi_names;
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_antialiasing" (0 = Off, 1 = FXAA, 2 = SSAA; Vulkan-only).
+	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
+	// GraphicsOptions_UpdateMenuItems swaps it to aa_names_gl under OpenGL.
+	s_graphicsoptions.antialiasing.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.antialiasing.generic.name  = "Antialiasing:";
+	s_graphicsoptions.antialiasing.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.antialiasing.generic.x     = 400;
+	s_graphicsoptions.antialiasing.generic.y     = y;
+	s_graphicsoptions.antialiasing.itemnames     = aa_names_vk;
 	y += BIGCHAR_HEIGHT+2;
 
 	// references/modifies "r_allowExtensions"
@@ -1043,6 +1088,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.list );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.renderapi );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.antialiasing );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.mode );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.colordepth );

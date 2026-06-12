@@ -725,6 +725,10 @@ void VK_GfxInfo( void ) {
 	ri.Printf( PRINT_ALL, "texturemode: %s\n", r_textureMode->string );
 	ri.Printf( PRINT_ALL, "picmip: %d\n", r_picmip->integer );
 	ri.Printf( PRINT_ALL, "validation: %s\n", vk.validation ? "enabled" : "disabled" );
+	ri.Printf( PRINT_ALL, "antialiasing: %s\n",
+		vk.aaMode == VK_AA_FXAA ? "FXAA" :
+		vk.aaMode == VK_AA_SSAA ? va( "SSAA %gx (%d x %d)", vk.ssaaScale, vk.renderExtent.width, vk.renderExtent.height ) :
+		"off" );
 	ri.Printf( PRINT_ALL, "present mode: %s\n",
 		vk.presentMode == VK_PRESENT_MODE_FIFO_KHR ? "FIFO (vsync)" :
 		vk.presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "MAILBOX" : "IMMEDIATE" );

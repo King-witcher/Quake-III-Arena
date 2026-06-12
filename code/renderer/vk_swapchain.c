@@ -139,8 +139,8 @@ static qboolean VK_CreateDepthBuffer( void ) {
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
 		imageInfo.format = vk.depthFormat;
-		imageInfo.extent.width = vk.extent.width;
-		imageInfo.extent.height = vk.extent.height;
+		imageInfo.extent.width = vk.renderExtent.width;	// matches the scene render target (SSAA = 2x)
+		imageInfo.extent.height = vk.renderExtent.height;
 		imageInfo.extent.depth = 1;
 		imageInfo.mipLevels = 1;
 		imageInfo.arrayLayers = 1;
@@ -173,6 +173,93 @@ static qboolean VK_CreateDepthBuffer( void ) {
 	}
 
 	return qtrue;
+}
+
+/*
+================
+VK_CreateOffscreenTargets
+
+For FXAA/SSAA the scene renders into a per-frame offscreen color image (sized to
+renderExtent) instead of straight to the swapchain; VK_EndFrame resolves it.  Off
+mode needs no offscreen image.  Per-frame-in-flight, like the depth buffer.
+================
+*/
+static qboolean VK_CreateOffscreenTargets( void ) {
+	VkImageCreateInfo		imageInfo;
+	VkMemoryRequirements	memReq;
+	VkMemoryAllocateInfo	allocInfo;
+	VkImageViewCreateInfo	viewInfo;
+	int						i;
+
+	if ( vk.aaMode == VK_AA_OFF ) {
+		return qtrue;
+	}
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		memset( &imageInfo, 0, sizeof( imageInfo ) );
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.format = vk.surfaceFormat.format;
+		imageInfo.extent.width = vk.renderExtent.width;
+		imageInfo.extent.height = vk.renderExtent.height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |	// scene target
+						  VK_IMAGE_USAGE_SAMPLED_BIT |			// FXAA post pass samples it
+						  VK_IMAGE_USAGE_TRANSFER_SRC_BIT;		// SSAA blits it down
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.offscreenImage[i] ) );
+
+		qvkGetImageMemoryRequirements( vk.device, vk.offscreenImage[i], &memReq );
+
+		memset( &allocInfo, 0, sizeof( allocInfo ) );
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memReq.size;
+		allocInfo.memoryTypeIndex = VK_FindMemoryType( memReq.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+		VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vk.offscreenMemory[i] ) );
+		VK_CHECK( qvkBindImageMemory( vk.device, vk.offscreenImage[i], vk.offscreenMemory[i], 0 ) );
+
+		memset( &viewInfo, 0, sizeof( viewInfo ) );
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = vk.offscreenImage[i];
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = vk.surfaceFormat.format;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.layerCount = 1;
+		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.offscreenView[i] ) );
+	}
+
+	return qtrue;
+}
+
+/*
+================
+VK_DestroyOffscreenTargets
+================
+*/
+static void VK_DestroyOffscreenTargets( void ) {
+	int i;
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		if ( vk.offscreenView[i] ) {
+			qvkDestroyImageView( vk.device, vk.offscreenView[i], NULL );
+			vk.offscreenView[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.offscreenImage[i] ) {
+			qvkDestroyImage( vk.device, vk.offscreenImage[i], NULL );
+			vk.offscreenImage[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.offscreenMemory[i] ) {
+			qvkFreeMemory( vk.device, vk.offscreenMemory[i], NULL );
+			vk.offscreenMemory[i] = VK_NULL_HANDLE;
+		}
+	}
 }
 
 /*
@@ -216,6 +303,33 @@ qboolean VK_CreateSwapchain( void ) {
 	// keep glConfig in sync with the real swapchain size
 	glConfig.vidWidth = vk.extent.width;
 	glConfig.vidHeight = vk.extent.height;
+
+	// resolve the antialiasing mode (latched cvar; read once per swapchain build).
+	// FXAA renders at display res into an offscreen image then runs a post pass;
+	// SSAA renders the scene 2x larger (renderExtent) then downsamples with a blit.
+	vk.aaMode = r_antialiasing ? r_antialiasing->integer : 0;
+	if ( vk.aaMode < 0 || vk.aaMode > VK_AA_SSAA ) {
+		vk.aaMode = VK_AA_OFF;
+	}
+	if ( vk.aaMode == VK_AA_SSAA ) {
+		// integer supersample factor per axis; clamp down so the (factor x) offscreen
+		// never exceeds the device's max 2D image dimension (8x is large at high res).
+		int factor = VK_SSAA_FACTOR;
+		uint32_t maxDim = vk.devProps.limits.maxImageDimension2D;
+		while ( factor > 1 &&
+			( (uint32_t)vk.extent.width * factor > maxDim || (uint32_t)vk.extent.height * factor > maxDim ) ) {
+			factor--;
+		}
+		if ( factor < VK_SSAA_FACTOR ) {
+			ri.Printf( PRINT_WARNING, "...SSAA clamped to %dx (device max image %u)\n", factor, maxDim );
+		}
+		vk.ssaaFactor = factor;
+	} else {
+		vk.ssaaFactor = 1;
+	}
+	vk.ssaaScale = (float)vk.ssaaFactor;
+	vk.renderExtent.width  = vk.extent.width  * vk.ssaaFactor;
+	vk.renderExtent.height = vk.extent.height * vk.ssaaFactor;
 
 	desiredImages = caps.minImageCount + 1;
 	if ( caps.maxImageCount > 0 && desiredImages > caps.maxImageCount ) {
@@ -284,6 +398,12 @@ qboolean VK_CreateSwapchain( void ) {
 	if ( !VK_CreateDepthBuffer() ) {
 		return qfalse;
 	}
+	if ( !VK_CreateOffscreenTargets() ) {
+		return qfalse;
+	}
+	// re-point the FXAA sampler sets at the (re)created offscreen views.  No-op on the
+	// first build (VK_InitPostProcess has not run yet); it updates them itself then.
+	VK_UpdateOffscreenDescriptors();
 
 	glConfig.isFullscreen = ( r_fullscreen->integer != 0 );
 	vk.swapchainValid = qtrue;
@@ -300,6 +420,8 @@ VK_DestroySwapchain
 */
 void VK_DestroySwapchain( void ) {
 	uint32_t i;
+
+	VK_DestroyOffscreenTargets();
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
 		if ( vk.depthView[i] ) {

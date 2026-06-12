@@ -79,6 +79,8 @@ void VK_BeginFrame( void ) {
 	VkRect2D					scissor;
 	VkResult					res;
 	int							frame = vk.frameIndex;
+	VkImage						colorImage;		// scene color target: offscreen (FXAA/SSAA) or swapchain (Off)
+	VkImageView					colorView;
 
 	if ( !vk.initialized || vk.frameStarted ) {
 		return;
@@ -124,7 +126,18 @@ void VK_BeginFrame( void ) {
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	qvkBeginCommandBuffer( vk.cmd, &beginInfo );
 
-	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
+	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
+	// viewport and are sized to renderExtent (= swapchain extent, or 2x under SSAA).
+	if ( vk.aaMode != VK_AA_OFF ) {
+		colorImage = vk.offscreenImage[frame];
+		colorView  = vk.offscreenView[frame];
+	} else {
+		colorImage = vk.swapchainImages[vk.swapchainIndex];
+		colorView  = vk.swapchainViews[vk.swapchainIndex];
+	}
+
+	VK_ImageBarrier( colorImage, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
@@ -137,7 +150,7 @@ void VK_BeginFrame( void ) {
 
 	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = vk.swapchainViews[vk.swapchainIndex];
+	colorAttachment.imageView = colorView;
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -157,7 +170,7 @@ void VK_BeginFrame( void ) {
 
 	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
 	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	renderingInfo.renderArea.extent = vk.extent;
+	renderingInfo.renderArea.extent = vk.renderExtent;	// SSAA renders 2x larger
 	renderingInfo.layerCount = 1;
 	renderingInfo.colorAttachmentCount = 1;
 	renderingInfo.pColorAttachments = &colorAttachment;
@@ -167,9 +180,9 @@ void VK_BeginFrame( void ) {
 
 	memset( &viewport, 0, sizeof( viewport ) );
 	viewport.x = 0.0f;
-	viewport.y = (float)vk.extent.height;		// negative-height viewport (GL-compatible Y)
-	viewport.width = (float)vk.extent.width;
-	viewport.height = -(float)vk.extent.height;
+	viewport.y = (float)vk.renderExtent.height;		// negative-height viewport (GL-compatible Y)
+	viewport.width = (float)vk.renderExtent.width;
+	viewport.height = -(float)vk.renderExtent.height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 	vk.draw.viewport = viewport;
@@ -177,7 +190,7 @@ void VK_BeginFrame( void ) {
 
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	scissor.extent = vk.extent;
+	scissor.extent = vk.renderExtent;
 	qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
 
 	// reset the per-draw recording state
@@ -210,10 +223,12 @@ Record (into the frame's command buffer) a copy of the rendered swapchain image
 into a host-visible buffer, leaving the image in PRESENT layout.
 ================
 */
-static void VK_RecordScreenshotCopy( void ) {
+static void VK_RecordScreenshotCopy( VkImageLayout from ) {
 	VkBufferCreateInfo	bufInfo;
 	VkBufferImageCopy	region;
 	VkDeviceSize		size = (VkDeviceSize)vk.extent.width * vk.extent.height * 4;
+	VkAccessFlags		srcAccess;
+	VkPipelineStageFlags srcStage;
 
 	memset( &bufInfo, 0, sizeof( bufInfo ) );
 	bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -224,10 +239,20 @@ static void VK_RecordScreenshotCopy( void ) {
 	vk.screenshotMemory = VK_AllocBufferMemory( vk.screenshotBuffer,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, NULL );
 
+	// the swapchain holds the final image in either COLOR_ATTACHMENT (Off/FXAA) or
+	// TRANSFER_DST (SSAA blit) layout; match the source access/stage accordingly
+	if ( from == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+		srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
+		srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	} else {
+		srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+
 	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+		from, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		srcAccess, VK_ACCESS_TRANSFER_READ_BIT,
+		srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT );
 
 	memset( &region, 0, sizeof( region ) );
 	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -319,6 +344,176 @@ static void VK_WriteScreenshot( void ) {
 
 /*
 ================
+VK_ResolveFXAA
+
+FXAA: the scene was rendered into the offscreen color image.  Run a fullscreen
+pass that samples it through the FXAA shader, writing into the swapchain.  Leaves
+the swapchain in COLOR_ATTACHMENT_OPTIMAL.
+================
+*/
+static void VK_ResolveFXAA( void ) {
+	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingInfo				renderingInfo;
+	VkViewport					vp;
+	VkRect2D					sc;
+	float						invRes[2];
+	int							frame = vk.frameIndex;
+
+	// offscreen scene color: COLOR_ATTACHMENT -> shader read
+	VK_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+
+	// swapchain: UNDEFINED -> color attachment (we overwrite every pixel)
+	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageView = vk.swapchainViews[vk.swapchainIndex];
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.renderArea.extent = vk.extent;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+
+	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+
+	// POSITIVE-height viewport: fullscreen.vert maps uv 0..1 top-left, matching the
+	// offscreen storage, so a normal viewport gives a 1:1 sample->screen copy.
+	memset( &vp, 0, sizeof( vp ) );
+	vp.x = 0.0f;
+	vp.y = 0.0f;
+	vp.width = (float)vk.extent.width;
+	vp.height = (float)vk.extent.height;
+	vp.minDepth = 0.0f;
+	vp.maxDepth = 1.0f;
+	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+
+	sc.offset.x = 0;
+	sc.offset.y = 0;
+	sc.extent = vk.extent;
+	qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeFXAA );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.postLayout,
+		0, 1, &vk.offscreenDesc[frame], 0, NULL );
+	invRes[0] = 1.0f / (float)vk.renderExtent.width;
+	invRes[1] = 1.0f / (float)vk.renderExtent.height;
+	qvkCmdPushConstants( vk.cmd, vk.postLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( invRes ), invRes );
+	qvkCmdDraw( vk.cmd, 3, 1, 0, 0 );
+
+	qvkCmdEndRendering( vk.cmd );
+}
+
+/*
+================
+VK_ResolveSSAA
+
+SSAA: the scene was rendered into the (factor x) larger offscreen image.  Run a
+fullscreen pass that box-averages each factor x factor source block into one
+display pixel (a true N-times downsample).  Leaves the swapchain in
+COLOR_ATTACHMENT_OPTIMAL (same as FXAA).
+================
+*/
+static void VK_ResolveSSAA( void ) {
+	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingInfo				renderingInfo;
+	VkViewport					vp;
+	VkRect2D					sc;
+	struct { float invSrcRes[2]; int factor; } pc;
+	int							frame = vk.frameIndex;
+
+	// offscreen scene color: COLOR_ATTACHMENT -> shader read
+	VK_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+
+	// swapchain: UNDEFINED -> color attachment (we overwrite every pixel)
+	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageView = vk.swapchainViews[vk.swapchainIndex];
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.renderArea.extent = vk.extent;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+
+	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+
+	// POSITIVE-height viewport: gl_FragCoord is the display pixel index, mapped to its
+	// factor x factor source block in the downsample shader.
+	memset( &vp, 0, sizeof( vp ) );
+	vp.x = 0.0f;
+	vp.y = 0.0f;
+	vp.width = (float)vk.extent.width;
+	vp.height = (float)vk.extent.height;
+	vp.minDepth = 0.0f;
+	vp.maxDepth = 1.0f;
+	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+
+	sc.offset.x = 0;
+	sc.offset.y = 0;
+	sc.extent = vk.extent;
+	qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeDownsample );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.postLayout,
+		0, 1, &vk.offscreenDesc[frame], 0, NULL );
+	pc.invSrcRes[0] = 1.0f / (float)vk.renderExtent.width;
+	pc.invSrcRes[1] = 1.0f / (float)vk.renderExtent.height;
+	pc.factor = vk.ssaaFactor;
+	qvkCmdPushConstants( vk.cmd, vk.postLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pc ), &pc );
+	qvkCmdDraw( vk.cmd, 3, 1, 0, 0 );
+
+	qvkCmdEndRendering( vk.cmd );
+}
+
+/*
+================
+VK_SwapchainToPresent
+
+Transition the swapchain image to PRESENT from whatever layout the resolve left it
+in (COLOR_ATTACHMENT for Off/FXAA, TRANSFER_DST for SSAA).
+================
+*/
+static void VK_SwapchainToPresent( VkImageLayout from ) {
+	VkAccessFlags			srcAccess;
+	VkPipelineStageFlags	srcStage;
+
+	if ( from == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
+		srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
+		srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	} else {
+		srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+	VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+		from, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		srcAccess, 0, srcStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+}
+
+/*
+================
 VK_EndFrame
 
 Close the pass, submit and present.  Dispatched from RB_SwapBuffers.
@@ -330,20 +525,28 @@ void VK_EndFrame( void ) {
 	VkPipelineStageFlags	waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkResult				res;
 	int						frame = vk.frameIndex;
+	VkImageLayout			swapLayout;		// layout the swapchain is left in after the resolve
 
 	if ( !vk.frameStarted ) {
 		return;
 	}
 
-	qvkCmdEndRendering( vk.cmd );
+	qvkCmdEndRendering( vk.cmd );		// ends the scene pass (offscreen for FXAA/SSAA)
+
+	// resolve the offscreen scene color into the swapchain (FXAA = shader pass,
+	// SSAA = downsampling blit); Off rendered straight into the swapchain already.
+	if ( vk.aaMode == VK_AA_FXAA ) {
+		VK_ResolveFXAA();
+	} else if ( vk.aaMode == VK_AA_SSAA ) {
+		VK_ResolveSSAA();
+	}
+	// all resolve paths (and Off) leave the swapchain in COLOR_ATTACHMENT_OPTIMAL
+	swapLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	if ( vk.screenshotPending ) {
-		VK_RecordScreenshotCopy();		// copies the image and transitions it to PRESENT
+		VK_RecordScreenshotCopy( swapLayout );	// copies the image and transitions it to PRESENT
 	} else {
-		VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+		VK_SwapchainToPresent( swapLayout );
 	}
 
 	qvkEndCommandBuffer( vk.cmd );
@@ -431,11 +634,14 @@ void VK_Set2D( void ) {
 	vk.draw.clipPlane[0] = vk.draw.clipPlane[1] = vk.draw.clipPlane[2] = vk.draw.clipPlane[3] = 0.0f;	// 2D never clips
 
 	if ( vk.frameStarted ) {
+		// pixel rects scale by the SSAA factor (1.0 for Off/FXAA) so the HUD/2D fills
+		// the larger render target; the ortho matrix above stays resolution-independent.
+		float s = vk.ssaaScale;
 		memset( &viewport, 0, sizeof( viewport ) );
 		viewport.x = 0.0f;
-		viewport.y = h;			// negative-height viewport (flip Y in the viewport transform)
-		viewport.width = w;
-		viewport.height = -h;
+		viewport.y = h * s;		// negative-height viewport (flip Y in the viewport transform)
+		viewport.width = w * s;
+		viewport.height = -h * s;
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 		vk.draw.viewport = viewport;
@@ -443,7 +649,7 @@ void VK_Set2D( void ) {
 
 		scissor.offset.x = 0;
 		scissor.offset.y = 0;
-		scissor.extent = vk.extent;
+		scissor.extent = vk.renderExtent;
 		qvkCmdSetScissor( vk.cmd, 0, 1, &scissor );
 	}
 }
@@ -490,21 +696,26 @@ void VK_SetViewport( void ) {
 		return;
 	}
 
-	memset( &vp, 0, sizeof( vp ) );
-	vp.x = (float)x;
-	vp.y = (float)( yTop + h );		// negative-height viewport (GL-compatible Y)
-	vp.width = (float)w;
-	vp.height = -(float)h;
-	vp.minDepth = 0.0f;
-	vp.maxDepth = 1.0f;
-	vk.draw.viewport = vp;			// remembered so qglDepthRange can re-emit it
-	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+	// scale pixel rects by the SSAA factor (1.0 for Off/FXAA); the projection above is
+	// resolution-independent and is NOT scaled.
+	{
+		float s = vk.ssaaScale;
+		memset( &vp, 0, sizeof( vp ) );
+		vp.x = (float)x * s;
+		vp.y = (float)( yTop + h ) * s;		// negative-height viewport (GL-compatible Y)
+		vp.width = (float)w * s;
+		vp.height = -(float)h * s;
+		vp.minDepth = 0.0f;
+		vp.maxDepth = 1.0f;
+		vk.draw.viewport = vp;			// remembered so qglDepthRange can re-emit it
+		qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
 
-	sc.offset.x = x;
-	sc.offset.y = yTop;				// scissor stays in framebuffer (top-left) coords
-	sc.extent.width = w;
-	sc.extent.height = h;
-	qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+		sc.offset.x = (int32_t)( x * s );
+		sc.offset.y = (int32_t)( yTop * s );	// scissor stays in framebuffer (top-left) coords
+		sc.extent.width = (uint32_t)( w * s );
+		sc.extent.height = (uint32_t)( h * s );
+		qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+	}
 }
 
 /*
@@ -545,10 +756,15 @@ void VK_ClearView( int clearBits ) {
 		n++;
 	}
 
-	rect.rect.offset.x = backEnd.viewParms.viewportX;
-	rect.rect.offset.y = glConfig.vidHeight - backEnd.viewParms.viewportY - backEnd.viewParms.viewportHeight;
-	rect.rect.extent.width = backEnd.viewParms.viewportWidth;
-	rect.rect.extent.height = backEnd.viewParms.viewportHeight;
+	// clear rect in framebuffer (top-left) coords, scaled by the SSAA factor (1.0 for Off/FXAA)
+	{
+		float s = vk.ssaaScale;
+		int yTop = glConfig.vidHeight - backEnd.viewParms.viewportY - backEnd.viewParms.viewportHeight;
+		rect.rect.offset.x = (int32_t)( backEnd.viewParms.viewportX * s );
+		rect.rect.offset.y = (int32_t)( yTop * s );
+		rect.rect.extent.width = (uint32_t)( backEnd.viewParms.viewportWidth * s );
+		rect.rect.extent.height = (uint32_t)( backEnd.viewParms.viewportHeight * s );
+	}
 	rect.baseArrayLayer = 0;
 	rect.layerCount = 1;
 

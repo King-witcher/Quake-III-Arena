@@ -162,11 +162,16 @@ qboolean VK_InitPipelines( void ) {
 
 	s_numPipelines = 0;
 	s_lastPipeline = NULL;
+
+	// FXAA fullscreen pass (offscreen color already exists from VK_CreateSwapchain)
+	VK_InitPostProcess();
 	return qtrue;
 }
 
 void VK_ShutdownPipelines( void ) {
 	int i;
+
+	VK_ShutdownPostProcess();
 
 	for ( i = 0; i < s_numPipelines; i++ ) {
 		qvkDestroyPipeline( vk.device, s_pipelines[i].pipeline, NULL );
@@ -392,4 +397,259 @@ VkPipeline VK_GetPipeline( const vkPipelineKey_t *key ) {
 	s_lastPipeline = &s_pipelines[s_numPipelines];
 	s_numPipelines++;
 	return s_lastPipeline->pipeline;
+}
+
+//==========================================================================
+//
+// post-processing (FXAA) -- a fullscreen pass that samples the offscreen scene
+// color into the swapchain.  SSAA does not use this (it resolves with a blit).
+//
+//==========================================================================
+
+/*
+================
+VK_CreatePostPipeline
+
+Fullscreen-triangle pipeline (no vertex input, depth off, single sample, no depth
+attachment) targeting the swapchain format.  vert = fullscreen.vert.
+================
+*/
+static VkPipeline VK_CreatePostPipeline( const uint32_t *frag, size_t fragSize ) {
+	VkShaderModule							vert, fragMod;
+	VkPipelineShaderStageCreateInfo			stages[2];
+	VkPipelineVertexInputStateCreateInfo	vtxInput;
+	VkPipelineInputAssemblyStateCreateInfo	inputAsm;
+	VkPipelineViewportStateCreateInfo		viewportState;
+	VkPipelineRasterizationStateCreateInfo	raster;
+	VkPipelineMultisampleStateCreateInfo	multisample;
+	VkPipelineDepthStencilStateCreateInfo	depthStencil;
+	VkPipelineColorBlendAttachmentState		blendAttach;
+	VkPipelineColorBlendStateCreateInfo		blend;
+	VkDynamicState							dynStates[2];
+	VkPipelineDynamicStateCreateInfo		dynamic;
+	VkPipelineRenderingCreateInfo			renderingInfo;
+	VkGraphicsPipelineCreateInfo			pipelineInfo;
+	VkPipeline								pipeline;
+
+	vert = VK_CreateShaderModule( vk_spv_fullscreen_vert, sizeof( vk_spv_fullscreen_vert ) );
+	fragMod = VK_CreateShaderModule( frag, fragSize );
+
+	memset( stages, 0, sizeof( stages ) );
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vert;
+	stages[0].pName = "main";
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = fragMod;
+	stages[1].pName = "main";
+
+	memset( &vtxInput, 0, sizeof( vtxInput ) );	// no vertex buffer (gl_VertexIndex)
+	vtxInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	memset( &inputAsm, 0, sizeof( inputAsm ) );
+	inputAsm.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAsm.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	memset( &viewportState, 0, sizeof( viewportState ) );
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;	// dynamic
+	viewportState.scissorCount = 1;		// dynamic
+
+	memset( &raster, 0, sizeof( raster ) );
+	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_NONE;
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	raster.lineWidth = 1.0f;
+
+	memset( &multisample, 0, sizeof( multisample ) );
+	multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	memset( &depthStencil, 0, sizeof( depthStencil ) );	// no depth attachment
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+
+	memset( &blendAttach, 0, sizeof( blendAttach ) );	// opaque write
+	blendAttach.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+								 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	memset( &blend, 0, sizeof( blend ) );
+	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blend.attachmentCount = 1;
+	blend.pAttachments = &blendAttach;
+
+	dynStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
+	dynStates[1] = VK_DYNAMIC_STATE_SCISSOR;
+	memset( &dynamic, 0, sizeof( dynamic ) );
+	dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamic.dynamicStateCount = 2;
+	dynamic.pDynamicStates = dynStates;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &vk.surfaceFormat.format;
+	renderingInfo.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+	renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
+	memset( &pipelineInfo, 0, sizeof( pipelineInfo ) );
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.pNext = &renderingInfo;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = stages;
+	pipelineInfo.pVertexInputState = &vtxInput;
+	pipelineInfo.pInputAssemblyState = &inputAsm;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &raster;
+	pipelineInfo.pMultisampleState = &multisample;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &blend;
+	pipelineInfo.pDynamicState = &dynamic;
+	pipelineInfo.layout = vk.postLayout;
+
+	VK_CHECK( qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL, &pipeline ) );
+
+	qvkDestroyShaderModule( vk.device, vert, NULL );
+	qvkDestroyShaderModule( vk.device, fragMod, NULL );
+	return pipeline;
+}
+
+/*
+================
+VK_InitPostProcess
+
+Build the FXAA sampler, descriptor pool/sets, pipeline layout and pipeline.  Only
+FXAA needs the shader pass; SSAA resolves with a blit and Off renders direct.
+================
+*/
+void VK_InitPostProcess( void ) {
+	VkSamplerCreateInfo			sampInfo;
+	VkDescriptorPoolSize		poolSize;
+	VkDescriptorPoolCreateInfo	poolInfo;
+	VkDescriptorSetAllocateInfo	allocInfo;
+	VkDescriptorSetLayout		layouts[VK_NUM_FRAMES];
+	VkPushConstantRange			pushRange;
+	VkPipelineLayoutCreateInfo	plInfo;
+	int							i;
+
+	if ( vk.aaMode == VK_AA_OFF ) {
+		return;		// Off renders straight to the swapchain; no post pass
+	}
+
+	memset( &sampInfo, 0, sizeof( sampInfo ) );
+	sampInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampInfo.magFilter = VK_FILTER_LINEAR;
+	sampInfo.minFilter = VK_FILTER_LINEAR;
+	sampInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	VK_CHECK( qvkCreateSampler( vk.device, &sampInfo, NULL, &vk.postSampler ) );
+
+	poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSize.descriptorCount = VK_NUM_FRAMES;
+	memset( &poolInfo, 0, sizeof( poolInfo ) );
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.maxSets = VK_NUM_FRAMES;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	VK_CHECK( qvkCreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.postDescPool ) );
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		layouts[i] = vk.descriptorSetLayout;	// reuse the single combined-image-sampler layout
+	}
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = vk.postDescPool;
+	allocInfo.descriptorSetCount = VK_NUM_FRAMES;
+	allocInfo.pSetLayouts = layouts;
+	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &allocInfo, vk.offscreenDesc ) );
+
+	// push constant: vec2 invRes (FXAA) or { vec2 invSrcRes; int factor } (downsample);
+	// size the range for the larger of the two (12 bytes)
+	pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pushRange.offset = 0;
+	pushRange.size = 3 * sizeof( float );
+	memset( &plInfo, 0, sizeof( plInfo ) );
+	plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	plInfo.setLayoutCount = 1;
+	plInfo.pSetLayouts = &vk.descriptorSetLayout;
+	plInfo.pushConstantRangeCount = 1;
+	plInfo.pPushConstantRanges = &pushRange;
+	VK_CHECK( qvkCreatePipelineLayout( vk.device, &plInfo, NULL, &vk.postLayout ) );
+
+	if ( vk.aaMode == VK_AA_FXAA ) {
+		vk.pipeFXAA = VK_CreatePostPipeline( vk_spv_fxaa_frag, sizeof( vk_spv_fxaa_frag ) );
+	} else {	// VK_AA_SSAA
+		vk.pipeDownsample = VK_CreatePostPipeline( vk_spv_downsample_frag, sizeof( vk_spv_downsample_frag ) );
+	}
+
+	VK_UpdateOffscreenDescriptors();
+}
+
+/*
+================
+VK_UpdateOffscreenDescriptors
+
+(Re)point the FXAA sampler sets at the current offscreen views.  Called once at
+init and again whenever VK_CreateSwapchain recreates the offscreen images (resize,
+vsync toggle) -- the sets persist in postDescPool but their bound view changes.
+================
+*/
+void VK_UpdateOffscreenDescriptors( void ) {
+	int i;
+
+	if ( vk.aaMode == VK_AA_OFF || !vk.postDescPool ) {
+		return;
+	}
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		VkDescriptorImageInfo	imgInfo;
+		VkWriteDescriptorSet	write;
+
+		if ( !vk.offscreenView[i] ) {
+			continue;
+		}
+		imgInfo.sampler = vk.postSampler;
+		imgInfo.imageView = vk.offscreenView[i];
+		imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		memset( &write, 0, sizeof( write ) );
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = vk.offscreenDesc[i];
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		write.pImageInfo = &imgInfo;
+		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
+}
+
+/*
+================
+VK_ShutdownPostProcess
+================
+*/
+void VK_ShutdownPostProcess( void ) {
+	if ( vk.pipeFXAA ) {
+		qvkDestroyPipeline( vk.device, vk.pipeFXAA, NULL );
+		vk.pipeFXAA = VK_NULL_HANDLE;
+	}
+	if ( vk.pipeDownsample ) {
+		qvkDestroyPipeline( vk.device, vk.pipeDownsample, NULL );
+		vk.pipeDownsample = VK_NULL_HANDLE;
+	}
+	if ( vk.postLayout ) {
+		qvkDestroyPipelineLayout( vk.device, vk.postLayout, NULL );
+		vk.postLayout = VK_NULL_HANDLE;
+	}
+	if ( vk.postDescPool ) {
+		qvkDestroyDescriptorPool( vk.device, vk.postDescPool, NULL );	// frees offscreenDesc
+		vk.postDescPool = VK_NULL_HANDLE;
+	}
+	if ( vk.postSampler ) {
+		qvkDestroySampler( vk.device, vk.postSampler, NULL );
+		vk.postSampler = VK_NULL_HANDLE;
+	}
+	memset( vk.offscreenDesc, 0, sizeof( vk.offscreenDesc ) );
 }

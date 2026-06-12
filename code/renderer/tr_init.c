@@ -33,6 +33,7 @@ renderApi_t	r_currentApi = RENDER_API_OPENGL;
 static void GfxInfo_f( void );
 
 cvar_t	*r_renderapi;
+cvar_t	*r_antialiasing;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -933,6 +934,9 @@ void R_Register( void )
 	// 0 = OpenGL (default), 1 = Vulkan.  Latched: only takes effect on the next
 	// vid_restart, exactly like r_mode / r_fullscreen.
 	r_renderapi = ri.Cvar_Get( "r_renderapi", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// 0 = Off, 1 = FXAA, 2 = SSAA.  Vulkan-only (treated as Off under OpenGL); latched,
+	// applied on the next vid_restart like r_renderapi / r_mode.
+	r_antialiasing = ri.Cvar_Get( "r_antialiasing", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );

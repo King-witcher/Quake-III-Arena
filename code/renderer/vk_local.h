@@ -34,6 +34,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Number of frames the CPU may have in flight before waiting on the GPU.
 #define VK_NUM_FRAMES		2
 
+// SSAA supersample factor per axis (the scene renders factor x larger, then a box
+// downsample resolves it).  Clamped down at runtime if the offscreen would exceed
+// the device's max 2D image dimension.
+#define VK_SSAA_FACTOR		4
+
 // A swapchain rarely exceeds 3-4 images; cap generously.
 #define MAX_SWAPCHAIN_IMAGES	8
 
@@ -59,6 +64,15 @@ typedef enum {
 	VK_SHADER_MULTI,			// two-texture combine (Phase 5)
 	VK_SHADER_COUNT
 } vkShaderType_t;
+
+// Antialiasing mode (mirrors r_antialiasing; read once at swapchain create).
+// Both non-Off modes render the scene into an offscreen color target which is
+// resolved to the swapchain in VK_EndFrame (FXAA = post shader, SSAA = blit).
+typedef enum {
+	VK_AA_OFF = 0,
+	VK_AA_FXAA = 1,
+	VK_AA_SSAA = 2
+} vkAAMode_t;
 
 // Per-image GPU resources; image_t.vkData points at one of these.
 typedef struct {
@@ -167,6 +181,28 @@ typedef struct {
 	VkShaderModule			shaderFrag[VK_SHADER_COUNT];
 	VkDescriptorPool		descriptorPool;
 
+	// antialiasing (read once from r_antialiasing at swapchain create)
+	int						aaMode;			// vkAAMode_t
+	int						ssaaFactor;		// SSAA integer factor per axis (1 otherwise)
+	float					ssaaScale;		// = ssaaFactor (float, for coordinate scaling)
+	VkExtent2D				renderExtent;	// scene render-target size (= extent * ssaaScale)
+
+	// offscreen scene color target (FXAA/SSAA): the scene renders here instead of
+	// straight to the swapchain.  Per-frame-in-flight, like the depth buffer, so
+	// two concurrent frames never share it.  vk_swapchain.c owns create/destroy.
+	VkImage					offscreenImage[VK_NUM_FRAMES];
+	VkDeviceMemory			offscreenMemory[VK_NUM_FRAMES];
+	VkImageView				offscreenView[VK_NUM_FRAMES];
+
+	// post-processing (FXAA): a fullscreen pass samples the offscreen target.
+	// Own descriptor pool (the image pool in vk_image.c is recreated per map load).
+	VkSampler				postSampler;	// linear, clamp-to-edge
+	VkDescriptorPool		postDescPool;
+	VkDescriptorSet			offscreenDesc[VK_NUM_FRAMES];	// offscreen sampler set (FXAA/SSAA)
+	VkPipelineLayout		postLayout;
+	VkPipeline				pipeFXAA;		// FXAA edge blur (aaMode FXAA)
+	VkPipeline				pipeDownsample;	// SSAA box downsample (aaMode SSAA)
+
 	// live draw-recording state (set by the dispatched GL_* leaves)
 	struct {
 		float		mvp[16];			// push constant (final clip-space transform)
@@ -246,6 +282,10 @@ void		VK_ShutdownImageSystem( void );
 qboolean	VK_InitPipelines( void );
 void		VK_ShutdownPipelines( void );
 VkPipeline	VK_GetPipeline( const vkPipelineKey_t *key );
+// post-processing (FXAA) -- fullscreen pass + its sampler/descriptors
+void		VK_InitPostProcess( void );			// called by VK_InitPipelines (after swapchain)
+void		VK_ShutdownPostProcess( void );		// called by VK_ShutdownPipelines
+void		VK_UpdateOffscreenDescriptors( void );	// (re)point FXAA sets at the offscreen views
 
 //
 // vk_backend.c
