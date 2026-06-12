@@ -1747,7 +1747,8 @@ static qboolean CollapseMultitexture( void ) {
 	int i;
 	textureBundle_t tmpBundle;
 
-	if ( !qglActiveTextureARB ) {
+	// backend-neutral multitexture test (GL: maxActiveTextures>1 <=> qglActiveTextureARB)
+	if ( glConfig.maxActiveTextures < 2 ) {
 		return qfalse;
 	}
 

@@ -130,44 +130,47 @@ static qboolean VK_CreateDepthBuffer( void ) {
 	VkMemoryRequirements	memReq;
 	VkMemoryAllocateInfo	allocInfo;
 	VkImageViewCreateInfo	viewInfo;
+	int						i;
 
 	vk.depthFormat = VK_ChooseDepthFormat();
 
-	memset( &imageInfo, 0, sizeof( imageInfo ) );
-	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageInfo.format = vk.depthFormat;
-	imageInfo.extent.width = vk.extent.width;
-	imageInfo.extent.height = vk.extent.height;
-	imageInfo.extent.depth = 1;
-	imageInfo.mipLevels = 1;
-	imageInfo.arrayLayers = 1;
-	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.depthImage ) );
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		memset( &imageInfo, 0, sizeof( imageInfo ) );
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.format = vk.depthFormat;
+		imageInfo.extent.width = vk.extent.width;
+		imageInfo.extent.height = vk.extent.height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.depthImage[i] ) );
 
-	qvkGetImageMemoryRequirements( vk.device, vk.depthImage, &memReq );
+		qvkGetImageMemoryRequirements( vk.device, vk.depthImage[i], &memReq );
 
-	memset( &allocInfo, 0, sizeof( allocInfo ) );
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memReq.size;
-	allocInfo.memoryTypeIndex = VK_FindMemoryType( memReq.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
-	VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vk.depthMemory ) );
-	VK_CHECK( qvkBindImageMemory( vk.device, vk.depthImage, vk.depthMemory, 0 ) );
+		memset( &allocInfo, 0, sizeof( allocInfo ) );
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memReq.size;
+		allocInfo.memoryTypeIndex = VK_FindMemoryType( memReq.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+		VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vk.depthMemory[i] ) );
+		VK_CHECK( qvkBindImageMemory( vk.device, vk.depthImage[i], vk.depthMemory[i], 0 ) );
 
-	memset( &viewInfo, 0, sizeof( viewInfo ) );
-	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.image = vk.depthImage;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format = vk.depthFormat;
-	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-	viewInfo.subresourceRange.levelCount = 1;
-	viewInfo.subresourceRange.layerCount = 1;
-	VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.depthView ) );
+		memset( &viewInfo, 0, sizeof( viewInfo ) );
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = vk.depthImage[i];
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = vk.depthFormat;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.layerCount = 1;
+		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.depthView[i] ) );
+	}
 
 	return qtrue;
 }
@@ -297,17 +300,19 @@ VK_DestroySwapchain
 void VK_DestroySwapchain( void ) {
 	uint32_t i;
 
-	if ( vk.depthView ) {
-		qvkDestroyImageView( vk.device, vk.depthView, NULL );
-		vk.depthView = VK_NULL_HANDLE;
-	}
-	if ( vk.depthImage ) {
-		qvkDestroyImage( vk.device, vk.depthImage, NULL );
-		vk.depthImage = VK_NULL_HANDLE;
-	}
-	if ( vk.depthMemory ) {
-		qvkFreeMemory( vk.device, vk.depthMemory, NULL );
-		vk.depthMemory = VK_NULL_HANDLE;
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		if ( vk.depthView[i] ) {
+			qvkDestroyImageView( vk.device, vk.depthView[i], NULL );
+			vk.depthView[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.depthImage[i] ) {
+			qvkDestroyImage( vk.device, vk.depthImage[i], NULL );
+			vk.depthImage[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.depthMemory[i] ) {
+			qvkFreeMemory( vk.device, vk.depthMemory[i], NULL );
+			vk.depthMemory[i] = VK_NULL_HANDLE;
+		}
 	}
 
 	for ( i = 0; i < vk.imageCount; i++ ) {

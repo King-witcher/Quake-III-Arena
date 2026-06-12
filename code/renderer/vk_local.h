@@ -116,11 +116,12 @@ typedef struct {
 	VkImage				swapchainImages[MAX_SWAPCHAIN_IMAGES];
 	VkImageView			swapchainViews[MAX_SWAPCHAIN_IMAGES];
 
-	// shared depth/stencil attachment
+	// depth/stencil attachment, one per frame-in-flight (two concurrent frames
+	// must NOT share a depth buffer or they race and the image corrupts/flickers)
 	VkFormat			depthFormat;
-	VkImage				depthImage;
-	VkDeviceMemory		depthMemory;
-	VkImageView			depthView;
+	VkImage				depthImage[VK_NUM_FRAMES];
+	VkDeviceMemory		depthMemory[VK_NUM_FRAMES];
+	VkImageView			depthView[VK_NUM_FRAMES];
 
 	// per-frame-in-flight objects
 	VkCommandPool		commandPool;
@@ -215,6 +216,7 @@ qboolean	VK_StreamIndexes( const glIndex_t *indexes, int count, VkDeviceSize *ou
 void		VK_CreateImage( image_t *image, const byte *pic, qboolean isLightmap );
 void		VK_DeleteImages( void );
 void		VK_TextureMode( const char *string );
+void		VK_FlushUploads( void );							// submit batched texture uploads
 qboolean	VK_InitImageSystem( void );							// descriptor pool, sampler cache
 void		VK_ShutdownImageSystem( void );
 

@@ -135,10 +135,12 @@ qboolean VK_InitPipelines( void ) {
 	plInfo.setLayoutCount = 2;
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &plInfo, NULL, &vk.pipelineLayout[2] ) );
 
-	// shader modules
+	// shader modules (the multitexture pipeline reuses single.vert -- it already
+	// forwards both texcoord sets -- with a separate module to keep cleanup simple)
 	vk.shaderVert[VK_SHADER_SINGLE] = VK_CreateShaderModule( vk_spv_single_vert, sizeof( vk_spv_single_vert ) );
 	vk.shaderFrag[VK_SHADER_SINGLE] = VK_CreateShaderModule( vk_spv_single_frag, sizeof( vk_spv_single_frag ) );
-	// VK_SHADER_MULTI modules are created in Phase 5.
+	vk.shaderVert[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_single_vert, sizeof( vk_spv_single_vert ) );
+	vk.shaderFrag[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_multi_frag, sizeof( vk_spv_multi_frag ) );
 
 	memset( &cacheInfo, 0, sizeof( cacheInfo ) );
 	cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -177,8 +179,9 @@ Translate a state key into a graphics pipeline using dynamic rendering.
 */
 static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	VkPipelineShaderStageCreateInfo			stages[2];
-	VkSpecializationMapEntry				specEntry;
+	VkSpecializationMapEntry				specEntries[2];
 	VkSpecializationInfo					specInfo;
+	struct { int alphaTest; int combine; } specData;
 	int										alphaTest;
 	VkVertexInputBindingDescription			vtxBinding;
 	VkVertexInputAttributeDescription		vtxAttribs[4];
@@ -203,13 +206,18 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	else if ( key->stateBits & GLS_ATEST_GE_80 ) alphaTest = 3;
 	else                                          alphaTest = 0;
 
-	specEntry.constantID = 0;
-	specEntry.offset = 0;
-	specEntry.size = sizeof( int );
-	specInfo.mapEntryCount = 1;
-	specInfo.pMapEntries = &specEntry;
-	specInfo.dataSize = sizeof( int );
-	specInfo.pData = &alphaTest;
+	specData.alphaTest = alphaTest;
+	specData.combine = key->multitexEnv;	// 0 MODULATE, 1 ADD, 2 REPLACE (single.frag ignores it)
+	specEntries[0].constantID = 0;
+	specEntries[0].offset = 0;
+	specEntries[0].size = sizeof( int );
+	specEntries[1].constantID = 1;
+	specEntries[1].offset = sizeof( int );
+	specEntries[1].size = sizeof( int );
+	specInfo.mapEntryCount = 2;
+	specInfo.pMapEntries = specEntries;
+	specInfo.dataSize = sizeof( specData );
+	specInfo.pData = &specData;
 
 	memset( stages, 0, sizeof( stages ) );
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

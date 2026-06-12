@@ -45,6 +45,23 @@ typedef struct {
 static vkSamplerCacheEntry_t	s_samplers[VK_MAX_SAMPLERS];
 static int						s_numSamplers;
 
+//
+// Batched texture upload.  Texture creation during a level load issues hundreds
+// of small uploads; doing one submit+wait per texture (the naive path) stalls the
+// GPU hundreds of times and makes loads crawl.  Instead we record every copy into
+// a single command buffer and flush it (one submit+wait) lazily: when the pending
+// staging memory grows past a cap, or at the start of the next frame.
+//
+#define VK_MAX_PENDING_STAGING		1024
+#define VK_UPLOAD_FLUSH_BYTES		( 48 * 1024 * 1024 )
+
+static VkCommandBuffer	s_uploadCmd;
+static qboolean			s_uploading;
+static VkBuffer			s_stagingBufs[VK_MAX_PENDING_STAGING];
+static VkDeviceMemory	s_stagingMems[VK_MAX_PENDING_STAGING];
+static int				s_numStaging;
+static VkDeviceSize		s_stagingBytes;
+
 /*
 ================
 VK_GetSampler
@@ -155,6 +172,7 @@ qboolean VK_InitImageSystem( void ) {
 }
 
 void VK_ShutdownImageSystem( void ) {
+	VK_FlushUploads();
 	VK_DestroySamplers();
 	if ( vk.descriptorPool ) {
 		qvkDestroyDescriptorPool( vk.device, vk.descriptorPool, NULL );
@@ -194,28 +212,95 @@ static void VK_UpdateImageDescriptor( image_t *image ) {
 
 /*
 ================
-VK_UploadMips
+VK_BeginUploadBatch
 
-Stage a full mip chain and copy it into the image, with the layout transitions
-UNDEFINED -> TRANSFER_DST -> SHADER_READ_ONLY.  Uses a one-time command buffer.
+Lazily open the shared upload command buffer.
 ================
 */
-static void VK_UploadMips( VkImage image, int levels, int *mipWidth, int *mipHeight,
-	byte **mipData, VkDeviceSize totalBytes ) {
-	VkBuffer					staging;
-	VkDeviceMemory				stagingMem;
-	VkBufferCreateInfo			bufInfo;
-	byte						*mapped;
-	VkBufferImageCopy			regions[16];
-	VkDeviceSize				offset;
-	int							i;
+static void VK_BeginUploadBatch( void ) {
 	VkCommandBufferAllocateInfo	cbAlloc;
-	VkCommandBuffer				cb;
 	VkCommandBufferBeginInfo	begin;
-	VkImageMemoryBarrier		barrier;
-	VkSubmitInfo				submit;
 
-	// staging buffer holding every level
+	if ( s_uploading ) {
+		return;
+	}
+
+	memset( &cbAlloc, 0, sizeof( cbAlloc ) );
+	cbAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cbAlloc.commandPool = vk.commandPool;
+	cbAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cbAlloc.commandBufferCount = 1;
+	VK_CHECK( qvkAllocateCommandBuffers( vk.device, &cbAlloc, &s_uploadCmd ) );
+
+	memset( &begin, 0, sizeof( begin ) );
+	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	qvkBeginCommandBuffer( s_uploadCmd, &begin );
+
+	s_uploading = qtrue;
+	s_numStaging = 0;
+	s_stagingBytes = 0;
+}
+
+/*
+================
+VK_FlushUploads
+
+Submit the pending upload command buffer (one wait for the whole batch) and free
+its staging buffers.  Called at frame start and when the batch grows too large.
+================
+*/
+void VK_FlushUploads( void ) {
+	VkSubmitInfo	submit;
+	int				i;
+
+	if ( !s_uploading ) {
+		return;
+	}
+
+	qvkEndCommandBuffer( s_uploadCmd );
+
+	memset( &submit, 0, sizeof( submit ) );
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit.commandBufferCount = 1;
+	submit.pCommandBuffers = &s_uploadCmd;
+	VK_CHECK( qvkQueueSubmit( vk.graphicsQueue, 1, &submit, VK_NULL_HANDLE ) );
+	qvkQueueWaitIdle( vk.graphicsQueue );
+
+	qvkFreeCommandBuffers( vk.device, vk.commandPool, 1, &s_uploadCmd );
+	s_uploadCmd = VK_NULL_HANDLE;
+
+	for ( i = 0; i < s_numStaging; i++ ) {
+		qvkUnmapMemory( vk.device, s_stagingMems[i] );	// now that the GPU is done
+		qvkFreeMemory( vk.device, s_stagingMems[i], NULL );
+		qvkDestroyBuffer( vk.device, s_stagingBufs[i], NULL );
+	}
+	s_numStaging = 0;
+	s_stagingBytes = 0;
+	s_uploading = qfalse;
+}
+
+/*
+================
+VK_RecordUpload
+
+Stage a full mip chain and record its copy + layout transitions into the shared
+upload command buffer.  The staging buffer is freed at the next VK_FlushUploads.
+================
+*/
+static void VK_RecordUpload( VkImage image, int levels, int *mipWidth, int *mipHeight,
+	byte **mipData, VkDeviceSize totalBytes ) {
+	VkBuffer				staging;
+	VkDeviceMemory			stagingMem;
+	VkBufferCreateInfo		bufInfo;
+	byte					*mapped;
+	VkBufferImageCopy		regions[16];
+	VkDeviceSize			offset;
+	int						i;
+	VkImageMemoryBarrier	barrier;
+
+	VK_BeginUploadBatch();
+
 	memset( &bufInfo, 0, sizeof( bufInfo ) );
 	bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufInfo.size = totalBytes;
@@ -241,19 +326,9 @@ static void VK_UploadMips( VkImage image, int levels, int *mipWidth, int *mipHei
 
 		offset += size;
 	}
-
-	// one-time command buffer
-	memset( &cbAlloc, 0, sizeof( cbAlloc ) );
-	cbAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cbAlloc.commandPool = vk.commandPool;
-	cbAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cbAlloc.commandBufferCount = 1;
-	VK_CHECK( qvkAllocateCommandBuffers( vk.device, &cbAlloc, &cb ) );
-
-	memset( &begin, 0, sizeof( begin ) );
-	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	qvkBeginCommandBuffer( cb, &begin );
+	// keep the staging memory mapped until the batch is flushed (unmapping a
+	// host-coherent allocation before the GPU has consumed it can leave writes in
+	// CPU write-combine buffers on some drivers -> corrupted/striped textures)
 
 	memset( &barrier, 0, sizeof( barrier ) );
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -268,31 +343,28 @@ static void VK_UploadMips( VkImage image, int levels, int *mipWidth, int *mipHei
 	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.srcAccessMask = 0;
 	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	qvkCmdPipelineBarrier( cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+	qvkCmdPipelineBarrier( s_uploadCmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		0, 0, NULL, 0, NULL, 1, &barrier );
 
-	qvkCmdCopyBufferToImage( cb, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, levels, regions );
+	qvkCmdCopyBufferToImage( s_uploadCmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, levels, regions );
 
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	qvkCmdPipelineBarrier( cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	qvkCmdPipelineBarrier( s_uploadCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		0, 0, NULL, 0, NULL, 1, &barrier );
 
-	qvkEndCommandBuffer( cb );
+	// keep the staging buffer alive until the batch is flushed (we always flush
+	// before the table fills, so s_numStaging is always in range here)
+	s_stagingBufs[s_numStaging] = staging;
+	s_stagingMems[s_numStaging] = stagingMem;
+	s_numStaging++;
+	s_stagingBytes += totalBytes;
 
-	memset( &submit, 0, sizeof( submit ) );
-	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit.commandBufferCount = 1;
-	submit.pCommandBuffers = &cb;
-	VK_CHECK( qvkQueueSubmit( vk.graphicsQueue, 1, &submit, VK_NULL_HANDLE ) );
-	qvkQueueWaitIdle( vk.graphicsQueue );
-
-	qvkFreeCommandBuffers( vk.device, vk.commandPool, 1, &cb );
-	qvkUnmapMemory( vk.device, stagingMem );
-	qvkFreeMemory( vk.device, stagingMem, NULL );
-	qvkDestroyBuffer( vk.device, staging, NULL );
+	if ( s_stagingBytes >= VK_UPLOAD_FLUSH_BYTES || s_numStaging >= VK_MAX_PENDING_STAGING ) {
+		VK_FlushUploads();
+	}
 }
 
 /*
@@ -424,7 +496,7 @@ void VK_CreateImage( image_t *image, const byte *pic, qboolean isLightmap ) {
 	VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vki->memory ) );
 	VK_CHECK( qvkBindImageMemory( vk.device, vki->image, vki->memory, 0 ) );
 
-	VK_UploadMips( vki->image, levels, mipWidth, mipHeight, mipData, totalBytes );
+	VK_RecordUpload( vki->image, levels, mipWidth, mipHeight, mipData, totalBytes );
 
 	memset( &viewInfo, 0, sizeof( viewInfo ) );
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -445,6 +517,14 @@ void VK_CreateImage( image_t *image, const byte *pic, qboolean isLightmap ) {
 	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &dsAlloc, &vki->descriptor ) );
 
 	VK_UpdateImageDescriptor( image );
+
+	// If a texture is created while a frame is being recorded (e.g. a model that
+	// first appears mid-game), its deferred upload must complete before that frame
+	// can sample it -- flush now.  During a level load no frame is active, so this
+	// is skipped and uploads stay batched (fast).
+	if ( vk.frameStarted ) {
+		VK_FlushUploads();
+	}
 
 	// free temporaries (reverse order of allocation)
 	for ( i = levels - 1; i >= 0; i-- ) {
@@ -471,6 +551,7 @@ void VK_DeleteImages( void ) {
 	if ( !vk.device ) {
 		return;
 	}
+	VK_FlushUploads();			// finish any in-flight uploads before freeing images
 	qvkDeviceWaitIdle( vk.device );
 
 	for ( i = 0; i < tr.numImages; i++ ) {

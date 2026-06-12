@@ -90,6 +90,9 @@ void VK_BeginFrame( void ) {
 		}
 	}
 
+	// make sure any textures created since the last frame are on the GPU
+	VK_FlushUploads();
+
 	qvkWaitForFences( vk.device, 1, &vk.frameFence[frame], VK_TRUE, VK_TIMEOUT_NS );
 
 	res = qvkAcquireNextImageKHR( vk.device, vk.swapchain, VK_TIMEOUT_NS,
@@ -119,7 +122,7 @@ void VK_BeginFrame( void ) {
 		0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
 
-	VK_ImageBarrier( vk.depthImage, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+	VK_ImageBarrier( vk.depthImage[frame], VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		0, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -138,7 +141,7 @@ void VK_BeginFrame( void ) {
 
 	memset( &depthAttachment, 0, sizeof( depthAttachment ) );
 	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	depthAttachment.imageView = vk.depthView;
+	depthAttachment.imageView = vk.depthView[frame];
 	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -438,6 +441,15 @@ void VK_TexEnv( int env ) {
 	vk.draw.multitexEnv = env;
 }
 
+// GL texenv mode -> multi.frag combine spec constant (0 MODULATE, 1 ADD, 2 REPLACE)
+static byte VK_CombineCode( int glEnv ) {
+	switch ( glEnv ) {
+	case GL_ADD:		return 1;
+	case GL_REPLACE:	return 2;
+	default:		return 0;	// GL_MODULATE
+	}
+}
+
 /*
 ================
 VK_Bind -- record the bound texture for a texture unit
@@ -500,7 +512,7 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	key.cullType = (byte)vk.draw.cullType;
 	key.mirror = backEnd.viewParms.isMirror ? 1 : 0;
 	key.shaderType = ( vk.draw.image[1] && vk.draw.multitexEnv ) ? VK_SHADER_MULTI : VK_SHADER_SINGLE;
-	key.multitexEnv = (byte)vk.draw.multitexEnv;
+	key.multitexEnv = VK_CombineCode( vk.draw.multitexEnv );
 	key.polygonOffset = ( tess.shader && tess.shader->polygonOffset ) ? 1 : 0;
 
 	// the multitexture shader does not exist yet (Phase 5): fall back to single
@@ -535,6 +547,14 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	qvkCmdBindVertexBuffers( vk.cmd, 0, 1, &vk.vertexBuffer[vk.frameIndex], &vtxOffset );
 	qvkCmdBindIndexBuffer( vk.cmd, vk.indexBuffer[vk.frameIndex], idxOffset, VK_INDEX_TYPE_UINT32 );
 	qvkCmdDrawIndexed( vk.cmd, numIndexes, 1, 0, 0, 0 );
+
+	// Clear the second texture unit after every draw.  The shared stage iterators
+	// only bind TMU1 (via GL_SelectTexture(1)+GL_Bind) for genuine multitexture
+	// passes; without this reset a following single-texture draw (weapon, fonts,
+	// 2D) would inherit a stale image[1] and wrongly pick the multitexture pipeline,
+	// modulating against the previous lightmap -> a black overlay on those surfaces.
+	vk.draw.image[1] = NULL;
+	vk.draw.multitexEnv = 0;
 }
 
 /*
