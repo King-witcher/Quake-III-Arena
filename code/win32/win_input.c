@@ -475,9 +475,15 @@ void IN_DIMouse( int *mx, int *my ) {
 	}
 
 	// read the raw delta counter and ignore
-	// the individual sample time / values
+	// the individual sample time / values.
+	// NOTE: cbData must be the size of the device's data format (sizeof(MYDATA)),
+	// NOT sizeof(DIDEVICEOBJECTDATA).  They happened to be equal on 32-bit, but on
+	// x64 DIDEVICEOBJECTDATA grew an 8-byte UINT_PTR uAppData (DirectInput 8), so
+	// the mismatched size made GetDeviceState mis-read -> a stuck mouse delta that
+	// spun the view right and pinned the menu cursor.  MYDATA matches DIMOUSESTATE's
+	// 16-byte { LONG lX,lY,lZ; BYTE[4] } layout, so reading into `state` is fine.
 	hr = IDirectInputDevice_GetDeviceState(g_pMouse,
-			sizeof(DIDEVICEOBJECTDATA), &state);
+			sizeof(MYDATA), &state);
 	if ( FAILED(hr) ) {
 		*mx = *my = 0;
 		return;
