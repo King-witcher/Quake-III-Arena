@@ -731,6 +731,12 @@ void UI_NetworkOptionsMenu_Cache( void );
 void UI_NetworkOptionsMenu( void );
 
 //
+// ui_raytracing.c
+//
+void UI_RaytracingOptionsMenu_Cache( void );
+void UI_RaytracingOptionsMenu( void );
+
+//
 // ui_gameinfo.c
 //
 typedef enum {

@@ -1,0 +1,80 @@
+#version 460
+// rt_blur.comp -- edge-aware (à-trous) denoise of the ray-traced 1-bounce indirect,
+// then composite it over the direct/ambient term produced by rt_light.comp.
+//
+// The indirect buffer (u_gi) is noisy because only a few hemisphere rays are traced
+// per pixel.  We blur it with a world-position-weighted bilateral kernel (so light
+// does not bleed across depth edges) and add giIntensity * blurredIndirect to the
+// already-shaded colour in u_outColor.
+#extension GL_EXT_ray_query : require
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout( set = 0, binding = 0 ) uniform sampler2D u_gi;       // raw indirect
+layout( set = 0, binding = 1 ) uniform sampler2D u_depth;    // scene depth
+layout( set = 0, binding = 2, rgba16f ) uniform image2D u_outColor;  // direct+ambient (read+write)
+
+// MUST match the std140 UBO bound for the lighting pass (we read invViewProj,
+// screen and p0.y only, but the layout has to line up).
+#define MAX_RT_DLIGHTS 32
+struct DLight { vec4 posRad; vec4 color; };
+layout( set = 0, binding = 3, std140 ) uniform UBO {
+	mat4   invViewProj;
+	vec4   eye;
+	vec4   screen;     // x=w, y=h, z=1/w, w=1/h
+	vec4   p0;         // x=ambientScale, y=giIntensity, ...
+	vec4   p1;
+	DLight dl[MAX_RT_DLIGHTS];
+} ubo;
+
+vec3 reconstruct( vec2 uv, float d ) {
+	vec3 ndc = vec3( uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d );
+	vec4 w = ubo.invViewProj * vec4( ndc, 1.0 );
+	return w.xyz / w.w;
+}
+
+void main() {
+	ivec2 pix = ivec2( gl_GlobalInvocationID.xy );
+	int W = int( ubo.screen.x );
+	int H = int( ubo.screen.y );
+	if ( pix.x >= W || pix.y >= H ) {
+		return;
+	}
+
+	vec3  lit = imageLoad( u_outColor, pix ).rgb;
+	float dC = texelFetch( u_depth, pix, 0 ).r;
+	if ( dC >= 1.0 ) {
+		return;		// sky: indirect is zero, leave the direct term untouched
+	}
+
+	vec2 uv = ( vec2( pix ) + 0.5 ) * ubo.screen.zw;
+	vec3 Pc = reconstruct( uv, dC );
+
+	const int STEP = 2;			// à-trous spacing -> 9x9 footprint from 5x5 taps
+	const float sigma = 64.0;	// world-space edge-stopping radius
+	vec3  sum = vec3( 0.0 );
+	float wsum = 0.0;
+	int dx, dy;
+
+	for ( dy = -2; dy <= 2; dy++ ) {
+		for ( dx = -2; dx <= 2; dx++ ) {
+			ivec2 p = ivec2( clamp( pix.x + dx * STEP, 0, W - 1 ),
+							 clamp( pix.y + dy * STEP, 0, H - 1 ) );
+			float d = texelFetch( u_depth, p, 0 ).r;
+			if ( d >= 1.0 ) {
+				continue;
+			}
+			vec2 uvp = ( vec2( p ) + 0.5 ) * ubo.screen.zw;
+			vec3 Pp = reconstruct( uvp, d );
+			vec3 diff = Pp - Pc;
+			float wz = exp( -dot( diff, diff ) / ( sigma * sigma ) );
+			float wk = exp( -float( dx * dx + dy * dy ) * 0.5 );
+			float w = wz * wk;
+			sum += texelFetch( u_gi, p, 0 ).rgb * w;
+			wsum += w;
+		}
+	}
+
+	vec3 gi = ( wsum > 1e-4 ) ? ( sum / wsum ) : vec3( 0.0 );
+	imageStore( u_outColor, pix, vec4( lit + gi * ubo.p0.y, 1.0 ) );
+}

@@ -162,6 +162,13 @@ static	void R_LoadLightmaps( lump_t *l ) {
 		return;
 	}
 
+	// ray tracing: keep a CPU copy of the (overbright-shifted) lightmap pixels so the
+	// world acceleration-structure build can bake per-vertex outgoing radiance.
+	tr.rtLightmapData = NULL;
+	if ( r_raytracing && r_raytracing->integer && tr.numLightmaps > 0 ) {
+		tr.rtLightmapData = ri.Hunk_Alloc( tr.numLightmaps * LIGHTMAP_SIZE * LIGHTMAP_SIZE * 4, h_low );
+	}
+
 	for ( i = 0 ; i < tr.numLightmaps ; i++ ) {
 		// expand the 24 bit on-disk to 32 bit
 		buf_p = buf + i * LIGHTMAP_SIZE*LIGHTMAP_SIZE * 3;
@@ -201,8 +208,13 @@ static	void R_LoadLightmaps( lump_t *l ) {
 				image[j*4+3] = 255;
 			}
 		}
-		tr.lightmaps[i] = R_CreateImage( va("*lightmap%d",i), image, 
+		tr.lightmaps[i] = R_CreateImage( va("*lightmap%d",i), image,
 			LIGHTMAP_SIZE, LIGHTMAP_SIZE, qfalse, qfalse, GL_CLAMP );
+
+		if ( tr.rtLightmapData ) {
+			Com_Memcpy( tr.rtLightmapData + i * LIGHTMAP_SIZE * LIGHTMAP_SIZE * 4,
+				image, LIGHTMAP_SIZE * LIGHTMAP_SIZE * 4 );
+		}
 	}
 
 	if ( r_lightmap->integer == 2 )	{

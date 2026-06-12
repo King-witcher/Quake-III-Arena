@@ -73,11 +73,17 @@ qboolean	VK_RT_Active( void );
 qboolean	VK_RT_CreateTargets( void );
 void		VK_RT_DestroyTargets( void );
 
-// Deferred lighting resolve: end-of-3D-scene hook.  Runs the ray-query compute
-// pass over the offscreen scene colour + depth and blits the result into the
-// swapchain, leaving it in COLOR_ATTACHMENT_OPTIMAL (ready for the 2D overlay
-// pass / present).  Records into vk.cmd.  Called only when vk.rtxEnabled.
-void		VK_RT_Resolve( void );
+// Deferred lighting: run the ray-query compute pass over the opaque offscreen scene
+// colour + G-buffer and blit the relit result BACK into the offscreen (in place), so
+// the subsequent transparent pass blends on top of the ray-traced image.  Leaves the
+// offscreen in COLOR_ATTACHMENT_OPTIMAL and depth in DEPTH_STENCIL_ATTACHMENT_OPTIMAL.
+// Call once per frame, after the opaque 3D pass has ended.  No-op (offscreen left as
+// the raster image) when the world AS / compute resources aren't ready.
+void		VK_RT_RelightOffscreen( void );
+
+// Blit the (relit + transparent-composited) offscreen to the current swapchain image,
+// leaving it COLOR_ATTACHMENT_OPTIMAL (ready for the 2D overlay pass / present).
+void		VK_RT_BlitToSwapchain( void );
 
 // Capture the current 3D view's projection + view matrices and eye position so the
 // deferred pass can reconstruct world position from depth.  Called from

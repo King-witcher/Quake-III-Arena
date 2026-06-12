@@ -81,17 +81,24 @@ typedef struct {
 	VkImage			rtColorImg[VK_NUM_FRAMES];
 	VkDeviceMemory	rtColorMem[VK_NUM_FRAMES];
 	VkImageView		rtColorView[VK_NUM_FRAMES];
+	VkImage			giImg[VK_NUM_FRAMES];				// raw 1-bounce indirect (denoised by blur pass)
+	VkDeviceMemory	giMem[VK_NUM_FRAMES];
+	VkImageView		giView[VK_NUM_FRAMES];
 	VkImageView		depthSampleView[VK_NUM_FRAMES];		// DEPTH-aspect view of vk.depthImage[i]
 	VkSampler		colorSampler;						// linear, clamp
 	VkSampler		depthSampler;						// nearest, clamp
 	VkBuffer		uboBuf[VK_NUM_FRAMES];
 	VkDeviceMemory	uboMem[VK_NUM_FRAMES];
 	void			*uboMapped[VK_NUM_FRAMES];
-	VkDescriptorSetLayout	setLayout;
+	VkDescriptorSetLayout	setLayout;					// lighting pass (8 bindings)
+	VkDescriptorSetLayout	blurSetLayout;				// denoise pass (4 bindings)
 	VkDescriptorPool		descPool;
 	VkDescriptorSet			sets[VK_NUM_FRAMES];
+	VkDescriptorSet			blurSets[VK_NUM_FRAMES];
 	VkPipelineLayout		pipeLayout;
 	VkPipeline				pipe;
+	VkPipelineLayout		blurPipeLayout;
+	VkPipeline				blurPipe;
 
 	// camera captured each frame from the 3D view (for depth -> world reconstruction)
 	float			camProj[16];
@@ -471,6 +478,57 @@ static void RT_SurfaceCounts( const msurface_t *surf, int type, int *nv, int *ni
 	}
 }
 
+// Bilinear sample of a retained 128x128 lightmap (overbright-shifted, 0..255) into
+// a 0..1 RGB triple.  Falls back to white when no lightmap data is available.
+#define RT_LM_SIZE	128
+static void RT_SampleLightmap( int lmIndex, float u, float v, float out[3] ) {
+	const byte	*lm;
+	float		fx, fy, dx, dy;
+	int			x0, y0, x1, y1, c;
+
+	out[0] = out[1] = out[2] = 1.0f;
+	if ( !tr.rtLightmapData || lmIndex < 0 || lmIndex >= tr.numLightmaps ) {
+		return;
+	}
+	lm = tr.rtLightmapData + (size_t)lmIndex * RT_LM_SIZE * RT_LM_SIZE * 4;
+	u = u < 0.0f ? 0.0f : ( u > 1.0f ? 1.0f : u );
+	v = v < 0.0f ? 0.0f : ( v > 1.0f ? 1.0f : v );
+	fx = u * ( RT_LM_SIZE - 1 );
+	fy = v * ( RT_LM_SIZE - 1 );
+	x0 = (int)fx; y0 = (int)fy;
+	x1 = ( x0 < RT_LM_SIZE - 1 ) ? x0 + 1 : x0;
+	y1 = ( y0 < RT_LM_SIZE - 1 ) ? y0 + 1 : y0;
+	dx = fx - x0; dy = fy - y0;
+	for ( c = 0; c < 3; c++ ) {
+		float a  = lm[ ( y0 * RT_LM_SIZE + x0 ) * 4 + c ];
+		float b  = lm[ ( y0 * RT_LM_SIZE + x1 ) * 4 + c ];
+		float cc = lm[ ( y1 * RT_LM_SIZE + x0 ) * 4 + c ];
+		float d  = lm[ ( y1 * RT_LM_SIZE + x1 ) * 4 + c ];
+		float top = a + ( b - a ) * dx;
+		float bot = cc + ( d - cc ) * dx;
+		out[c] = ( top + ( bot - top ) * dy ) / 255.0f;
+	}
+}
+
+// outgoing radiance for a vertex = surface albedo * baked light at that vertex
+// (lightmap sample when the surface is lightmapped, else its vertex colour).
+static void RT_VertexRadiance( const float albedo[3], int lmIndex,
+							   float lu, float lv, const byte *vcolor, float rad[3] ) {
+	float light[3];
+	if ( lmIndex >= 0 ) {
+		RT_SampleLightmap( lmIndex, lu, lv, light );
+	} else if ( vcolor ) {
+		light[0] = vcolor[0] / 255.0f;
+		light[1] = vcolor[1] / 255.0f;
+		light[2] = vcolor[2] / 255.0f;
+	} else {
+		light[0] = light[1] = light[2] = 1.0f;
+	}
+	rad[0] = albedo[0] * light[0];
+	rad[1] = albedo[1] * light[1];
+	rad[2] = albedo[2] * light[2];
+}
+
 // Append one usable surface's geometry into the flat vertex/index arrays.
 // vbase is the running vertex count (added to local indices); both *vcount and
 // *icount are advanced.
@@ -478,6 +536,7 @@ static void RT_EmitSurface( const msurface_t *surf, int type,
 							rtVertex_t *verts, uint32_t *indices,
 							uint32_t *vcount, uint32_t *icount ) {
 	float	albedo[3];
+	int		lmIndex = surf->shader->lightmapIndex;
 	uint32_t vbase = *vcount;
 	int		i;
 
@@ -489,9 +548,11 @@ static void RT_EmitSurface( const msurface_t *surf, int type,
 		const int *idx = (const int *)( (const byte *)f + f->ofsIndices );
 		for ( i = 0; i < f->numPoints; i++ ) {
 			rtVertex_t *v = &verts[ *vcount + i ];
+			const byte *vcol = (const byte *)&f->points[i][7];	// packed RGBA
 			v->pos[0] = f->points[i][0]; v->pos[1] = f->points[i][1]; v->pos[2] = f->points[i][2]; v->pos[3] = 0;
 			v->nrm[0] = f->plane.normal[0]; v->nrm[1] = f->plane.normal[1]; v->nrm[2] = f->plane.normal[2]; v->nrm[3] = 0;
-			v->rad[0] = albedo[0]; v->rad[1] = albedo[1]; v->rad[2] = albedo[2]; v->rad[3] = 0;
+			RT_VertexRadiance( albedo, lmIndex, f->points[i][5], f->points[i][6], vcol, v->rad );
+			v->rad[3] = 0;
 		}
 		for ( i = 0; i < f->numIndices; i++ ) {
 			indices[ *icount + i ] = vbase + (uint32_t)idx[i];
@@ -507,7 +568,8 @@ static void RT_EmitSurface( const msurface_t *surf, int type,
 			const drawVert_t *dv = &t->verts[i];
 			v->pos[0] = dv->xyz[0]; v->pos[1] = dv->xyz[1]; v->pos[2] = dv->xyz[2]; v->pos[3] = 0;
 			v->nrm[0] = dv->normal[0]; v->nrm[1] = dv->normal[1]; v->nrm[2] = dv->normal[2]; v->nrm[3] = 0;
-			v->rad[0] = albedo[0]; v->rad[1] = albedo[1]; v->rad[2] = albedo[2]; v->rad[3] = 0;
+			RT_VertexRadiance( albedo, lmIndex, dv->lightmap[0], dv->lightmap[1], dv->color, v->rad );
+			v->rad[3] = 0;
 		}
 		for ( i = 0; i < t->numIndexes; i++ ) {
 			indices[ *icount + i ] = vbase + (uint32_t)t->indexes[i];
@@ -524,7 +586,8 @@ static void RT_EmitSurface( const msurface_t *surf, int type,
 			const drawVert_t *dv = &g->verts[i];
 			v->pos[0] = dv->xyz[0]; v->pos[1] = dv->xyz[1]; v->pos[2] = dv->xyz[2]; v->pos[3] = 0;
 			v->nrm[0] = dv->normal[0]; v->nrm[1] = dv->normal[1]; v->nrm[2] = dv->normal[2]; v->nrm[3] = 0;
-			v->rad[0] = albedo[0]; v->rad[1] = albedo[1]; v->rad[2] = albedo[2]; v->rad[3] = 0;
+			RT_VertexRadiance( albedo, lmIndex, dv->lightmap[0], dv->lightmap[1], dv->color, v->rad );
+			v->rad[3] = 0;
 		}
 		for ( r = 0; r < h - 1; r++ ) {
 			for ( c = 0; c < w - 1; c++ ) {
@@ -823,6 +886,8 @@ VK_RT_Shutdown
 */
 void VK_RT_Shutdown( void ) {
 	VK_RT_FreeWorld();
+	VK_RT_DestroyTargets();		// free compute targets/pipeline BEFORE the rt memset below
+								// (otherwise their handles are zeroed and leak on device destroy)
 	qvkGetAccelerationStructureBuildSizesKHR = NULL;
 	qvkCreateAccelerationStructureKHR = NULL;
 	qvkDestroyAccelerationStructureKHR = NULL;
@@ -838,6 +903,13 @@ VK_RT_Active
 */
 qboolean VK_RT_Active( void ) {
 	return ( vk.rtxEnabled && rt.functionsLoaded );
+}
+
+// VK-type-free wrapper for the shared (GL+VK) draw path: true once the world AS is
+// up and the deferred RT lighting is actually running, so tr_shade.c suppresses its
+// own additive dynamic-light pass (the RT pass relights dynamic lights, with shadows).
+qboolean R_RaytracingActive( void ) {
+	return ( VK_RT_Active() && rt.worldBuilt );
 }
 
 //==========================================================================
@@ -967,45 +1039,16 @@ static VkSampler RT_CreateSampler( VkFilter filter ) {
 	return s;
 }
 
-static qboolean RT_CreateComputePipeline( void ) {
-	VkDescriptorSetLayoutBinding	b[7];
-	VkDescriptorSetLayoutCreateInfo	li;
-	VkPipelineLayoutCreateInfo		pli;
-	VkShaderModuleCreateInfo		smi;
-	VkShaderModule					module;
-	VkComputePipelineCreateInfo		cpi;
-	int i;
-
-	memset( b, 0, sizeof( b ) );
-	for ( i = 0; i < 7; i++ ) {
-		b[i].binding = i;
-		b[i].descriptorCount = 1;
-		b[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-	}
-	b[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	// scene colour
-	b[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	// depth
-	b[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			// rt output
-	b[3].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;	// TLAS
-	b[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;			// geometry
-	b[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;			// indices
-	b[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			// per-frame UBO
-
-	memset( &li, 0, sizeof( li ) );
-	li.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	li.bindingCount = 7;
-	li.pBindings = b;
-	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &li, NULL, &rt.setLayout ) );
-
-	memset( &pli, 0, sizeof( pli ) );
-	pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pli.setLayoutCount = 1;
-	pli.pSetLayouts = &rt.setLayout;
-	VK_CHECK( qvkCreatePipelineLayout( vk.device, &pli, NULL, &rt.pipeLayout ) );
+static VkPipeline RT_BuildComputePipe( VkPipelineLayout layout, const uint32_t *spv, size_t spvSize ) {
+	VkShaderModuleCreateInfo	smi;
+	VkShaderModule				module;
+	VkComputePipelineCreateInfo	cpi;
+	VkPipeline					pipe;
 
 	memset( &smi, 0, sizeof( smi ) );
 	smi.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	smi.codeSize = sizeof( vk_spv_rt_light_comp );
-	smi.pCode = vk_spv_rt_light_comp;
+	smi.codeSize = spvSize;
+	smi.pCode = spv;
 	VK_CHECK( qvkCreateShaderModule( vk.device, &smi, NULL, &module ) );
 
 	memset( &cpi, 0, sizeof( cpi ) );
@@ -1014,10 +1057,68 @@ static qboolean RT_CreateComputePipeline( void ) {
 	cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 	cpi.stage.module = module;
 	cpi.stage.pName = "main";
-	cpi.layout = rt.pipeLayout;
-	VK_CHECK( qvkCreateComputePipelines( vk.device, vk.pipelineCache, 1, &cpi, NULL, &rt.pipe ) );
+	cpi.layout = layout;
+	VK_CHECK( qvkCreateComputePipelines( vk.device, vk.pipelineCache, 1, &cpi, NULL, &pipe ) );
 
 	qvkDestroyShaderModule( vk.device, module, NULL );
+	return pipe;
+}
+
+static qboolean RT_CreateComputePipeline( void ) {
+	VkDescriptorSetLayoutBinding	b[9];
+	VkDescriptorSetLayoutCreateInfo	li;
+	VkPipelineLayoutCreateInfo		pli;
+	int i;
+
+	// --- lighting pass: 9 bindings ---
+	memset( b, 0, sizeof( b ) );
+	for ( i = 0; i < 9; i++ ) {
+		b[i].binding = i;
+		b[i].descriptorCount = 1;
+		b[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	b[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// scene colour
+	b[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// depth
+	b[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;				// lit output (base*ambient+direct)
+	b[3].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;	// TLAS
+	b[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;				// geometry
+	b[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;				// indices
+	b[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;				// per-frame UBO
+	b[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;				// raw indirect output
+	b[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// albedo G-buffer
+
+	memset( &li, 0, sizeof( li ) );
+	li.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	li.bindingCount = 9;
+	li.pBindings = b;
+	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &li, NULL, &rt.setLayout ) );
+
+	memset( &pli, 0, sizeof( pli ) );
+	pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pli.setLayoutCount = 1;
+	pli.pSetLayouts = &rt.setLayout;
+	VK_CHECK( qvkCreatePipelineLayout( vk.device, &pli, NULL, &rt.pipeLayout ) );
+	rt.pipe = RT_BuildComputePipe( rt.pipeLayout, vk_spv_rt_light_comp, sizeof( vk_spv_rt_light_comp ) );
+
+	// --- denoise pass: 4 bindings (gi sampler, depth sampler, out storage, UBO) ---
+	memset( b, 0, sizeof( b ) );
+	for ( i = 0; i < 4; i++ ) {
+		b[i].binding = i;
+		b[i].descriptorCount = 1;
+		b[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	b[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// raw indirect
+	b[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// depth
+	b[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;				// out (read+write)
+	b[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;				// per-frame UBO
+
+	li.bindingCount = 4;
+	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &li, NULL, &rt.blurSetLayout ) );
+
+	pli.pSetLayouts = &rt.blurSetLayout;
+	VK_CHECK( qvkCreatePipelineLayout( vk.device, &pli, NULL, &rt.blurPipeLayout ) );
+	rt.blurPipe = RT_BuildComputePipe( rt.blurPipeLayout, vk_spv_rt_blur_comp, sizeof( vk_spv_rt_blur_comp ) );
+
 	return qtrue;
 }
 
@@ -1088,23 +1189,38 @@ qboolean VK_RT_CreateTargets( void ) {
 		vi.subresourceRange.layerCount = 1;
 		VK_CHECK( qvkCreateImageView( vk.device, &vi, NULL, &rt.rtColorView[i] ) );
 
+		// giImage: raw 1-bounce indirect, written by the lighting pass, sampled+denoised
+		// by the blur pass (so STORAGE + SAMPLED).
+		ii.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		VK_CHECK( qvkCreateImage( vk.device, &ii, NULL, &rt.giImg[i] ) );
+		qvkGetImageMemoryRequirements( vk.device, rt.giImg[i], &mr );
+		ai.allocationSize = mr.size;
+		ai.memoryTypeIndex = VK_FindMemoryType( mr.memoryTypeBits, devProps );
+		VK_CHECK( qvkAllocateMemory( vk.device, &ai, NULL, &rt.giMem[i] ) );
+		VK_CHECK( qvkBindImageMemory( vk.device, rt.giImg[i], rt.giMem[i], 0 ) );
+		vi.image = rt.giImg[i];
+		VK_CHECK( qvkCreateImageView( vk.device, &vi, NULL, &rt.giView[i] ) );
+
 		rt.depthSampleView[i] = RT_DepthAspectView( vk.depthImage[i] );
 
 		rt.uboBuf[i] = RT_CreateBuffer( sizeof( rtUBO_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			hostProps, &rt.uboMem[i], &rt.uboMapped[i] );
 	}
 
-	// descriptor pool sized for VK_NUM_FRAMES sets
+	// descriptor pool covering both the lighting set and the denoise set per frame.
+	// per frame: combined samplers = 2 (light: scene,depth) + 2 (blur: gi,depth) = 4;
+	// storage images = 2 (light: out,giOut) + 1 (blur: out) = 3; accel struct = 1;
+	// storage buffers = 2 (light: geo,idx); uniform buffers = 1 (light) + 1 (blur) = 2.
 	memset( poolSizes, 0, sizeof( poolSizes ) );
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	poolSizes[0].descriptorCount = 2 * VK_NUM_FRAMES;
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			poolSizes[1].descriptorCount = 1 * VK_NUM_FRAMES;
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;	poolSizes[0].descriptorCount = 5 * VK_NUM_FRAMES;
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;			poolSizes[1].descriptorCount = 3 * VK_NUM_FRAMES;
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR; poolSizes[2].descriptorCount = 1 * VK_NUM_FRAMES;
 	poolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;			poolSizes[3].descriptorCount = 2 * VK_NUM_FRAMES;
-	poolSizes[4].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			poolSizes[4].descriptorCount = 1 * VK_NUM_FRAMES;
+	poolSizes[4].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;			poolSizes[4].descriptorCount = 2 * VK_NUM_FRAMES;
 
 	memset( &dpi, 0, sizeof( dpi ) );
 	dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	dpi.maxSets = VK_NUM_FRAMES;
+	dpi.maxSets = 2 * VK_NUM_FRAMES;
 	dpi.poolSizeCount = 5;
 	dpi.pPoolSizes = poolSizes;
 	VK_CHECK( qvkCreateDescriptorPool( vk.device, &dpi, NULL, &rt.descPool ) );
@@ -1113,15 +1229,18 @@ qboolean VK_RT_CreateTargets( void ) {
 		return qfalse;
 	}
 
-	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
-		layouts[i] = rt.setLayout;
-	}
 	memset( &dsai, 0, sizeof( dsai ) );
 	dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	dsai.descriptorPool = rt.descPool;
 	dsai.descriptorSetCount = VK_NUM_FRAMES;
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) { layouts[i] = rt.setLayout; }
 	dsai.pSetLayouts = layouts;
 	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &dsai, rt.sets ) );
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) { layouts[i] = rt.blurSetLayout; }
+	dsai.pSetLayouts = layouts;
+	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &dsai, rt.blurSets ) );
 
 	rt.targetsReady = qtrue;
 	return qtrue;
@@ -1138,16 +1257,23 @@ void VK_RT_DestroyTargets( void ) {
 	if ( !vk.device ) {
 		return;
 	}
-	if ( rt.pipe )       { qvkDestroyPipeline( vk.device, rt.pipe, NULL ); rt.pipe = VK_NULL_HANDLE; }
-	if ( rt.pipeLayout ) { qvkDestroyPipelineLayout( vk.device, rt.pipeLayout, NULL ); rt.pipeLayout = VK_NULL_HANDLE; }
-	if ( rt.setLayout )  { qvkDestroyDescriptorSetLayout( vk.device, rt.setLayout, NULL ); rt.setLayout = VK_NULL_HANDLE; }
-	if ( rt.descPool )   { qvkDestroyDescriptorPool( vk.device, rt.descPool, NULL ); rt.descPool = VK_NULL_HANDLE; }
+	if ( rt.pipe )           { qvkDestroyPipeline( vk.device, rt.pipe, NULL ); rt.pipe = VK_NULL_HANDLE; }
+	if ( rt.blurPipe )       { qvkDestroyPipeline( vk.device, rt.blurPipe, NULL ); rt.blurPipe = VK_NULL_HANDLE; }
+	if ( rt.pipeLayout )     { qvkDestroyPipelineLayout( vk.device, rt.pipeLayout, NULL ); rt.pipeLayout = VK_NULL_HANDLE; }
+	if ( rt.blurPipeLayout ) { qvkDestroyPipelineLayout( vk.device, rt.blurPipeLayout, NULL ); rt.blurPipeLayout = VK_NULL_HANDLE; }
+	if ( rt.setLayout )      { qvkDestroyDescriptorSetLayout( vk.device, rt.setLayout, NULL ); rt.setLayout = VK_NULL_HANDLE; }
+	if ( rt.blurSetLayout )  { qvkDestroyDescriptorSetLayout( vk.device, rt.blurSetLayout, NULL ); rt.blurSetLayout = VK_NULL_HANDLE; }
+	if ( rt.descPool )       { qvkDestroyDescriptorPool( vk.device, rt.descPool, NULL ); rt.descPool = VK_NULL_HANDLE; }
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
 		rt.sets[i] = VK_NULL_HANDLE;
+		rt.blurSets[i] = VK_NULL_HANDLE;
 		if ( rt.rtColorView[i] )     { qvkDestroyImageView( vk.device, rt.rtColorView[i], NULL ); rt.rtColorView[i] = VK_NULL_HANDLE; }
 		if ( rt.rtColorImg[i] )      { qvkDestroyImage( vk.device, rt.rtColorImg[i], NULL ); rt.rtColorImg[i] = VK_NULL_HANDLE; }
 		if ( rt.rtColorMem[i] )      { qvkFreeMemory( vk.device, rt.rtColorMem[i], NULL ); rt.rtColorMem[i] = VK_NULL_HANDLE; }
+		if ( rt.giView[i] )          { qvkDestroyImageView( vk.device, rt.giView[i], NULL ); rt.giView[i] = VK_NULL_HANDLE; }
+		if ( rt.giImg[i] )           { qvkDestroyImage( vk.device, rt.giImg[i], NULL ); rt.giImg[i] = VK_NULL_HANDLE; }
+		if ( rt.giMem[i] )           { qvkFreeMemory( vk.device, rt.giMem[i], NULL ); rt.giMem[i] = VK_NULL_HANDLE; }
 		if ( rt.depthSampleView[i] ) { qvkDestroyImageView( vk.device, rt.depthSampleView[i], NULL ); rt.depthSampleView[i] = VK_NULL_HANDLE; }
 		if ( rt.uboMem[i] ) {
 			qvkUnmapMemory( vk.device, rt.uboMem[i] );
@@ -1220,10 +1346,10 @@ static void RT_UpdateUBO( int frame ) {
 }
 
 static void RT_WriteDescriptors( int frame ) {
-	VkDescriptorImageInfo	scene, depth, out;
+	VkDescriptorImageInfo	scene, depth, out, giOut, albedo;
 	VkDescriptorBufferInfo	geoI, idxI, uboI;
 	VkWriteDescriptorSetAccelerationStructureKHR	tlasInfo;
-	VkWriteDescriptorSet	w[7];
+	VkWriteDescriptorSet	w[9];
 
 	memset( &scene, 0, sizeof( scene ) );
 	scene.sampler = rt.colorSampler;
@@ -1238,6 +1364,15 @@ static void RT_WriteDescriptors( int frame ) {
 	memset( &out, 0, sizeof( out ) );
 	out.imageView = rt.rtColorView[frame];
 	out.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	memset( &giOut, 0, sizeof( giOut ) );
+	giOut.imageView = rt.giView[frame];
+	giOut.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	memset( &albedo, 0, sizeof( albedo ) );
+	albedo.sampler = rt.colorSampler;
+	albedo.imageView = vk.albedoView[frame];
+	albedo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	geoI.buffer = rt.geoBuf; geoI.offset = 0; geoI.range = VK_WHOLE_SIZE;
 	idxI.buffer = rt.idxBuf; idxI.offset = 0; idxI.range = VK_WHOLE_SIZE;
@@ -1256,13 +1391,52 @@ static void RT_WriteDescriptors( int frame ) {
 	w[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[4].dstSet = rt.sets[frame]; w[4].dstBinding = 4; w[4].descriptorCount = 1; w[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[4].pBufferInfo = &geoI;
 	w[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[5].dstSet = rt.sets[frame]; w[5].dstBinding = 5; w[5].descriptorCount = 1; w[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[5].pBufferInfo = &idxI;
 	w[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[6].dstSet = rt.sets[frame]; w[6].dstBinding = 6; w[6].descriptorCount = 1; w[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[6].pBufferInfo = &uboI;
+	w[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[7].dstSet = rt.sets[frame]; w[7].dstBinding = 7; w[7].descriptorCount = 1; w[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; w[7].pImageInfo = &giOut;
+	w[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[8].dstSet = rt.sets[frame]; w[8].dstBinding = 8; w[8].descriptorCount = 1; w[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[8].pImageInfo = &albedo;
 
-	qvkUpdateDescriptorSets( vk.device, 7, w, 0, NULL );
+	qvkUpdateDescriptorSets( vk.device, 9, w, 0, NULL );
 }
 
-// straight offscreen -> swapchain blit (used when the compute path can't run yet,
-// e.g. no world AS / not in a 3D scene -- keeps the menu and loading screens working)
-static void RT_BlitOffscreen( void ) {
+static void RT_WriteBlurDescriptors( int frame ) {
+	VkDescriptorImageInfo	gi, depth, out;
+	VkDescriptorBufferInfo	uboI;
+	VkWriteDescriptorSet	w[4];
+
+	memset( &gi, 0, sizeof( gi ) );
+	gi.sampler = rt.colorSampler;
+	gi.imageView = rt.giView[frame];
+	gi.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( &depth, 0, sizeof( depth ) );
+	depth.sampler = rt.depthSampler;
+	depth.imageView = rt.depthSampleView[frame];
+	depth.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	memset( &out, 0, sizeof( out ) );
+	out.imageView = rt.rtColorView[frame];
+	out.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	uboI.buffer = rt.uboBuf[frame]; uboI.offset = 0; uboI.range = sizeof( rtUBO_t );
+
+	memset( w, 0, sizeof( w ) );
+	w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstSet = rt.blurSets[frame]; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[0].pImageInfo = &gi;
+	w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstSet = rt.blurSets[frame]; w[1].dstBinding = 1; w[1].descriptorCount = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1].pImageInfo = &depth;
+	w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstSet = rt.blurSets[frame]; w[2].dstBinding = 2; w[2].descriptorCount = 1; w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; w[2].pImageInfo = &out;
+	w[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[3].dstSet = rt.blurSets[frame]; w[3].dstBinding = 3; w[3].descriptorCount = 1; w[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[3].pBufferInfo = &uboI;
+
+	qvkUpdateDescriptorSets( vk.device, 4, w, 0, NULL );
+}
+
+/*
+================
+VK_RT_BlitToSwapchain
+
+Copy the (relit + transparent-composited) offscreen scene colour to the swapchain
+image, leaving it COLOR_ATTACHMENT_OPTIMAL.  Used for the final present blit and as
+the whole resolve when RT can't run (menu / no world AS -- offscreen holds raster).
+================
+*/
+void VK_RT_BlitToSwapchain( void ) {
 	int			frame = vk.frameIndex;
 	VkImageBlit	region;
 
@@ -1293,28 +1467,29 @@ static void RT_BlitOffscreen( void ) {
 
 /*
 ================
-VK_RT_Resolve
+VK_RT_RelightOffscreen
 
-End-of-3D-scene hook.  When the world AS + compute resources are ready, run the
-ray-query lighting compute pass (offscreen colour + depth -> rtColor) and blit the
-result to the swapchain.  Otherwise fall back to a plain offscreen->swapchain blit.
-Leaves the swapchain in COLOR_ATTACHMENT_OPTIMAL.
+Run the ray-query lighting + denoise compute passes over the opaque offscreen +
+G-buffer and blit the relit result BACK into the offscreen (in place), so the
+transparent pass that follows blends over the ray-traced image.  Leaves the
+offscreen in COLOR_ATTACHMENT_OPTIMAL and depth in DEPTH_STENCIL_ATTACHMENT_OPTIMAL.
+No-op (offscreen kept as the raster image) until the world AS + targets are ready.
 ================
 */
-void VK_RT_Resolve( void ) {
+void VK_RT_RelightOffscreen( void ) {
 	int			frame = vk.frameIndex;
 	uint32_t	gx, gy;
 	VkImageBlit	region;
 
 	if ( !rt.targetsReady || !rt.worldBuilt || !rt.camValid ) {
-		RT_BlitOffscreen();
-		return;
+		return;		// leave the offscreen as the rasterised image
 	}
 
 	RT_UpdateUBO( frame );
 	RT_WriteDescriptors( frame );
+	RT_WriteBlurDescriptors( frame );
 
-	// inputs -> shader-readable; output -> general (storage write)
+	// inputs -> shader-readable; outputs -> general (storage write)
 	RT_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
@@ -1323,43 +1498,70 @@ void VK_RT_Resolve( void ) {
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
 		VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	RT_ImageBarrier( vk.albedoImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
 	RT_ImageBarrier( rt.rtColorImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 		0, VK_ACCESS_SHADER_WRITE_BIT,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	RT_ImageBarrier( rt.giImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		0, VK_ACCESS_SHADER_WRITE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
 
-	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipe );
-	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipeLayout, 0, 1, &rt.sets[frame], 0, NULL );
 	gx = ( vk.renderExtent.width + 7 ) / 8;
 	gy = ( vk.renderExtent.height + 7 ) / 8;
+
+	// pass 1: lighting (writes lit -> rtColor, raw indirect -> giImg)
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipe );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.pipeLayout, 0, 1, &rt.sets[frame], 0, NULL );
 	qvkCmdDispatch( vk.cmd, gx, gy, 1 );
 
-	// rtColor -> transfer src ; swapchain -> transfer dst ; blit ; restore layouts
+	// giImg: storage-write -> sampled; rtColor: storage-write -> storage read+write
+	RT_ImageBarrier( rt.giImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+	RT_ImageBarrier( rt.rtColorImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+		VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT );
+
+	// pass 2: denoise the indirect and composite over rtColor
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.blurPipe );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rt.blurPipeLayout, 0, 1, &rt.blurSets[frame], 0, NULL );
+	qvkCmdDispatch( vk.cmd, gx, gy, 1 );
+
+	// blit the relit rtColor BACK into the offscreen (in place), so the transparent
+	// pass blends over the ray-traced image.  rtColor -> transfer src ; offscreen
+	// (was shader-read for the compute) -> transfer dst ; blit ; restore layouts.
 	RT_ImageBarrier( rt.rtColorImg[frame], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
-	RT_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		0, VK_ACCESS_TRANSFER_WRITE_BIT,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+	RT_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
 
 	memset( &region, 0, sizeof( region ) );
 	region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; region.srcSubresource.layerCount = 1;
 	region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; region.dstSubresource.layerCount = 1;
 	region.srcOffsets[1].x = (int32_t)vk.renderExtent.width;  region.srcOffsets[1].y = (int32_t)vk.renderExtent.height; region.srcOffsets[1].z = 1;
-	region.dstOffsets[1].x = (int32_t)vk.extent.width;        region.dstOffsets[1].y = (int32_t)vk.extent.height;       region.dstOffsets[1].z = 1;
+	region.dstOffsets[1].x = (int32_t)vk.renderExtent.width;  region.dstOffsets[1].y = (int32_t)vk.renderExtent.height; region.dstOffsets[1].z = 1;
 	qvkCmdBlitImage( vk.cmd,
 		rt.rtColorImg[frame], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		vk.offscreenImage[frame], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		1, &region, VK_FILTER_NEAREST );
 
-	RT_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+	RT_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
 
-	// depth back to attachment layout for the native-res 2D overlay pass that follows
+	// depth back to attachment layout for the transparent pass (depth-tested) that follows
 	RT_ImageBarrier( vk.depthImage[frame], VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,

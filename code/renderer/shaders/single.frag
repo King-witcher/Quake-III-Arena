@@ -7,6 +7,10 @@
 // runtime; thresholds match GL (GLS_ATEST_GT_0 / _LT_80 / _GE_80).
 //
 layout( constant_id = 0 ) const int c_alphaTest = 0;	// 0 none, 1 GT0, 2 LT80, 3 GE80
+// 1 for opaque surfaces, 0 for transparent ones: written to the G-buffer albedo alpha
+// so the ray-traced lighting pass relights only opaque pixels and leaves the rasterised
+// blend of transparent surfaces (smoke, flares, shadows, ...) untouched.
+layout( constant_id = 2 ) const int c_gbufOpaque = 1;
 
 layout( set = 0, binding = 0 ) uniform sampler2D u_tex0;
 
@@ -15,9 +19,14 @@ layout( location = 1 ) in vec2 frag_texCoord0;
 layout( location = 2 ) in vec2 frag_texCoord1;
 
 layout( location = 0 ) out vec4 out_color;
+// G-buffer albedo (material colour at this pixel) for the ray-traced lighting pass.
+// Only consumed when the pipeline targets 2 colour attachments (3D scene pass with
+// ray tracing on); discarded otherwise.
+layout( location = 1 ) out vec4 out_albedo;
 
 void main() {
-	vec4 c = frag_color * texture( u_tex0, frag_texCoord0 );
+	vec4 t = texture( u_tex0, frag_texCoord0 );
+	vec4 c = frag_color * t;
 
 	if ( c_alphaTest == 1 ) {			// GL_GREATER 0.0  -> keep a > 0
 		if ( c.a <= 0.0 ) discard;
@@ -28,4 +37,5 @@ void main() {
 	}
 
 	out_color = c;
+	out_albedo = vec4( t.rgb, float( c_gbufOpaque ) );	// rgb = albedo; a = opaque mask
 }

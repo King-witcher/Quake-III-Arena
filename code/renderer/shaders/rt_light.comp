@@ -15,8 +15,10 @@ layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
 
 layout( set = 0, binding = 0 ) uniform sampler2D u_sceneColor;   // rasterised scene (lightmap base)
 layout( set = 0, binding = 1 ) uniform sampler2D u_depth;        // scene depth (0..1)
-layout( set = 0, binding = 2, rgba16f ) uniform writeonly image2D u_outColor;
+layout( set = 0, binding = 2, rgba16f ) uniform writeonly image2D u_outColor;  // base*ambient + direct
 layout( set = 0, binding = 3 ) uniform accelerationStructureEXT u_tlas;
+layout( set = 0, binding = 7, rgba16f ) uniform writeonly image2D u_giOut;     // indirect (denoised next pass)
+layout( set = 0, binding = 8 ) uniform sampler2D u_albedo;                     // G-buffer material colour
 
 struct RTVertex { vec4 pos; vec4 nrm; vec4 rad; };
 layout( set = 0, binding = 4, std430 ) readonly buffer GeoBuf { RTVertex v[]; } geo;
@@ -90,10 +92,14 @@ void main() {
 
 	vec3  base  = texelFetch( u_sceneColor, pix, 0 ).rgb;
 	float depth = texelFetch( u_depth, pix, 0 ).r;
+	vec4  alb   = texelFetch( u_albedo, pix, 0 );	// rgb = material albedo, a = opaque mask
 
-	// sky (cleared depth) or no acceleration structure -> pass the raster image through
-	if ( depth >= 1.0 || ubo.p1.y < 0.5 ) {
+	// Pass the rasterised image straight through (no relighting) for: sky (cleared
+	// depth), no acceleration structure, or transparent surfaces (alb.a == 0 -- smoke,
+	// flares, explosions, shadows).  Relighting those would dim/blacken their blend.
+	if ( depth >= 1.0 || ubo.p1.y < 0.5 || alb.a < 0.5 ) {
 		imageStore( u_outColor, pix, vec4( base, 1.0 ) );
+		imageStore( u_giOut, pix, vec4( 0.0 ) );
 		return;
 	}
 
@@ -108,6 +114,7 @@ void main() {
 	float nl = length( N );
 	if ( nl < 1e-6 ) {
 		imageStore( u_outColor, pix, vec4( base, 1.0 ) );
+		imageStore( u_giOut, pix, vec4( 0.0 ) );
 		return;
 	}
 	N /= nl;
@@ -157,7 +164,15 @@ void main() {
 		gi /= float( nGi );
 	}
 
-	// dimmed lightmap base + colour-bleed tint, plus the (additive) dynamic light
-	vec3 outc = base * ( ambientScale + giInt * gi ) + direct;
-	imageStore( u_outColor, pix, vec4( outc, 1.0 ) );
+	// receiver material colour: dynamic light and indirect bounce are modulated by it
+	// so each point is lit in its OWN material colour (a white light on a red wall reads
+	// red, not white), and a tiny floor keeps unlit spots visible instead of pure black.
+	vec3 A = alb.rgb;
+
+	// split outputs: the smooth term (dim baked base + shadowed dynamic light + floor)
+	// goes straight out; the noisy 1-bounce indirect (pre-modulated by the receiver
+	// albedo) goes to its own buffer to be denoised + composited by rt_blur.comp.
+	vec3 lit = base * ambientScale + A * direct + A * 0.03;
+	imageStore( u_outColor, pix, vec4( lit, 1.0 ) );
+	imageStore( u_giOut, pix, vec4( A * gi, 1.0 ) );
 }

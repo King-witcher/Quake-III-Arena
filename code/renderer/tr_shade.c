@@ -1094,7 +1094,8 @@ void RB_StageIteratorGeneric( void )
 	// now do any dynamic lighting needed
 	//
 	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE
-		&& !(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY) ) ) {
+		&& !(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY) )
+		&& !R_RaytracingActive() ) {	// RT relights dynamic lights (with shadows) in its deferred pass
 		ProjectDlightTexture();
 	}
 
@@ -1182,7 +1183,7 @@ void RB_StageIteratorVertexLitTexture( void )
 	// 
 	// now do any dynamic lighting needed
 	//
-	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE ) {
+	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE && !R_RaytracingActive() ) {
 		ProjectDlightTexture();
 	}
 
@@ -1287,7 +1288,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	// 
 	// now do any dynamic lighting needed
 	//
-	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE ) {
+	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE && !R_RaytracingActive() ) {
 		ProjectDlightTexture();
 	}
 

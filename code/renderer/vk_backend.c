@@ -73,9 +73,10 @@ dynamic-rendering pass that clears color + depth.  Dispatched from RB_DrawBuffer
 */
 void VK_BeginFrame( void ) {
 	VkCommandBufferBeginInfo	beginInfo;
-	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingAttachmentInfo	colorAttachment[2];	// [1] = albedo G-buffer under ray tracing
 	VkRenderingAttachmentInfo	depthAttachment;
 	VkRenderingInfo				renderingInfo;
+	qboolean					gbuffer = vk.rtxEnabled;
 	VkViewport					viewport;
 	VkRect2D					scissor;
 	VkResult					res;
@@ -132,6 +133,7 @@ void VK_BeginFrame( void ) {
 	vk.curExtent = vk.renderExtent;
 	vk.curScale  = vk.ssaaScale;
 	vk.on2DTarget = qfalse;
+	vk.rtRelit = qfalse;	// RT: opaque pass not yet relit this frame
 
 	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
 	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
@@ -155,16 +157,30 @@ void VK_BeginFrame( void ) {
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT );
 
-	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
-	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = colorView;
-	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.clearValue.color.float32[0] = 0.0f;
-	colorAttachment.clearValue.color.float32[1] = 0.0f;
-	colorAttachment.clearValue.color.float32[2] = 0.0f;
-	colorAttachment.clearValue.color.float32[3] = 1.0f;
+	if ( gbuffer ) {
+		VK_ImageBarrier( vk.albedoImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+	}
+
+	memset( colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment[0].imageView = colorView;
+	colorAttachment[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment[0].clearValue.color.float32[0] = 0.0f;
+	colorAttachment[0].clearValue.color.float32[1] = 0.0f;
+	colorAttachment[0].clearValue.color.float32[2] = 0.0f;
+	colorAttachment[0].clearValue.color.float32[3] = 1.0f;
+	if ( gbuffer ) {
+		colorAttachment[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		colorAttachment[1].imageView = vk.albedoView[frame];
+		colorAttachment[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttachment[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;	// clearValue already 0 (memset)
+	}
 
 	memset( &depthAttachment, 0, sizeof( depthAttachment ) );
 	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -179,8 +195,8 @@ void VK_BeginFrame( void ) {
 	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 	renderingInfo.renderArea.extent = vk.renderExtent;	// SSAA renders 2x larger
 	renderingInfo.layerCount = 1;
-	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachments = &colorAttachment;
+	renderingInfo.colorAttachmentCount = gbuffer ? 2 : 1;
+	renderingInfo.pColorAttachments = colorAttachment;
 	renderingInfo.pDepthAttachment = &depthAttachment;
 
 	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
@@ -546,8 +562,12 @@ void VK_EndFrame( void ) {
 		// DLSS/RT: the scene was already resolved to the swapchain in VK_Set2D and the
 		// 2D overlay drawn straight onto it at native res -- nothing left to resolve.
 	} else if ( vk.rtxEnabled ) {
-		// ray tracing drew no 2D this frame (rare): run the deferred lighting + blit now
-		VK_RT_Resolve();
+		// ray tracing drew no 2D this frame (rare): relight (if not done) + blit now
+		if ( !vk.rtRelit ) {
+			VK_RT_RelightOffscreen();
+			vk.rtRelit = qtrue;
+		}
+		VK_RT_BlitToSwapchain();
 	} else if ( vk.aaMode == VK_AA_FXAA ) {
 		VK_ResolveFXAA();
 	} else if ( vk.aaMode == VK_AA_SSAA ) {
@@ -667,6 +687,62 @@ static void VK_Begin2DPass( void ) {
 
 /*
 ================
+VK_BeginTransparentPass
+
+RT only: after the opaque 3D scene has been ray-traced into the offscreen, resume
+3D drawing for the transparent surfaces -- LOAD the relit offscreen colour and the
+opaque depth (so transparents depth-test + blend over the ray-traced image).  A
+single colour attachment (no G-buffer): transparents are not relit.
+================
+*/
+static void VK_BeginTransparentPass( void ) {
+	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingAttachmentInfo	depthAttachment;
+	VkRenderingInfo				renderingInfo;
+	int							frame = vk.frameIndex;
+
+	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageView = vk.offscreenView[frame];
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;	// keep the ray-traced opaque image
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	memset( &depthAttachment, 0, sizeof( depthAttachment ) );
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.imageView = vk.depthView[frame];
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;	// keep opaque depth for testing
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.renderArea.extent = vk.renderExtent;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+	renderingInfo.pDepthAttachment = &depthAttachment;
+
+	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+}
+
+/*
+================
+VK_RT_EnterTransparent
+
+Split the 3D pass: end the opaque pass, ray-trace the opaque scene into the
+offscreen (in place), and reopen a transparent pass over the relit image.
+================
+*/
+static void VK_RT_EnterTransparent( void ) {
+	qvkCmdEndRendering( vk.cmd );		// end the opaque G-buffer pass
+	VK_RT_RelightOffscreen();			// relight offscreen (compute + blit back to offscreen)
+	VK_BeginTransparentPass();			// resume 3D for the transparent surfaces
+	vk.rtRelit = qtrue;
+}
+
+/*
+================
 VK_Set2D
 
 RB_SetGL2D leaf: build the orthographic MVP (screen pixels -> Vulkan clip) and a
@@ -702,9 +778,13 @@ void VK_Set2D( void ) {
 		// drawing the 2D overlay directly at native resolution (crisp text), instead of
 		// drawing 2D into the low-res offscreen and upscaling it with the scene.
 		if ( ( vk.aaMode == VK_AA_DLSS || vk.rtxEnabled ) && !vk.on2DTarget ) {
-			qvkCmdEndRendering( vk.cmd );		// end the 3D offscreen pass
+			qvkCmdEndRendering( vk.cmd );		// end the 3D pass (opaque or transparent)
 			if ( vk.rtxEnabled ) {
-				VK_RT_Resolve();				// deferred ray-traced lighting + offscreen->swapchain
+				if ( !vk.rtRelit ) {			// no transparent surfaces this frame -> relight now
+					VK_RT_RelightOffscreen();
+					vk.rtRelit = qtrue;
+				}
+				VK_RT_BlitToSwapchain();		// relit (+ transparent) offscreen -> swapchain
 			} else {
 				VK_ResolveFXAA();				// DLSS: offscreen(renderExtent) -> swapchain(extent)
 			}
@@ -961,6 +1041,15 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 		return;
 	}
 
+	// RT: at the first transparent surface of the MAIN view, split the 3D pass -- ray-trace
+	// the opaque scene into the offscreen, then draw transparents over the relit image (so
+	// the world seen THROUGH transparents is ray-traced, and the transparents keep their
+	// blend).  Portal/mirror sub-views are left in the opaque pass (small region).
+	if ( vk.rtxEnabled && !vk.rtRelit && !vk.on2DTarget
+		&& tess.shader && tess.shader->sort > SS_OPAQUE && !backEnd.viewParms.isPortal ) {
+		VK_RT_EnterTransparent();
+	}
+
 	// build interleaved vertices from whatever client arrays the GL path bound
 	// (tess.svars for the generic path, local arrays for dlights, etc.)
 	{
@@ -1027,6 +1116,13 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	key.shaderType = ( vk.draw.image[1] && vk.draw.multitexEnv ) ? VK_SHADER_MULTI : VK_SHADER_SINGLE;
 	key.multitexEnv = VK_CombineCode( vk.draw.multitexEnv );
 	key.polygonOffset = ( tess.shader && tess.shader->polygonOffset ) ? 1 : 0;
+	// Opaque 3D pass under ray tracing writes the albedo G-buffer (2 attachments).  After
+	// the opaque->transparent split (rtRelit) and in the 2D overlay pass, draws target a
+	// single colour attachment, so the gbuffer pipeline variant is off.
+	key.gbuffer = ( vk.rtxEnabled && !vk.on2DTarget && !vk.rtRelit ) ? 1 : 0;
+	// transparent surfaces (sort past opaque: blends, decals, flares, shadows) are tagged
+	// non-opaque in the G-buffer so the RT pass leaves their rasterised blend untouched.
+	key.transparent = ( tess.shader && tess.shader->sort > SS_OPAQUE ) ? 1 : 0;
 
 	// the multitexture shader does not exist yet (Phase 5): fall back to single
 	if ( key.shaderType == VK_SHADER_MULTI && !vk.shaderVert[VK_SHADER_MULTI] ) {

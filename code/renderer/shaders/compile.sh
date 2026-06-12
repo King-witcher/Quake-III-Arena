@@ -20,7 +20,7 @@ glslc="${GLSLC:-${VULKAN_SDK:-}/Bin/glslc.exe}"
 [ -x "$glslc" ] || glslc="glslc"
 
 # full set, in a stable order
-all_shaders=( single.vert single.frag multi.frag fullscreen.vert fxaa.frag downsample.frag rt_light.comp )
+all_shaders=( single.vert single.frag multi.frag fullscreen.vert fxaa.frag downsample.frag rt_light.comp rt_blur.comp )
 
 # pick the subset to (re)compile
 if [ "$#" -gt 0 ]; then

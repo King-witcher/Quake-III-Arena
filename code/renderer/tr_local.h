@@ -913,6 +913,11 @@ typedef struct {
 	int						numLightmaps;
 	image_t					*lightmaps[MAX_LIGHTMAPS];
 
+	// CPU copy of the lightmap pixels (RGBA, 128x128 each, overbright-shifted), kept
+	// only when ray tracing is enabled so the world AS build can bake per-vertex
+	// outgoing radiance = albedo * lightmap.  Hunk-allocated, freed on map reload.
+	byte					*rtLightmapData;	// numLightmaps * 128*128*4, or NULL
+
 	trRefEntity_t			*currentEntity;
 	trRefEntity_t			worldEntity;		// point currentEntity at this when rendering world
 	int						currentEntityNum;
@@ -1195,6 +1200,8 @@ void		RE_SetWorldVisData( const byte *vis );
 // backend is active with ray tracing enabled.
 void		VK_RT_BuildWorld( void );		// (re)build the world BLAS/TLAS from tr.world
 void		VK_RT_FreeWorld( void );		// release the world acceleration structures
+qboolean	R_RaytracingActive( void );		// true when the RT deferred lighting path is running this map
+											// (so the shared draw path skips its own dynamic-light pass)
 qhandle_t	RE_RegisterModel( const char *name );
 qhandle_t	RE_RegisterSkin( const char *name );
 void		RE_Shutdown( qboolean destroyWindow );

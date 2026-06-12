@@ -45,6 +45,7 @@ SOUND OPTIONS MENU
 #define ID_QUALITY			16
 //#define ID_A3D				17
 #define ID_BACK				18
+#define ID_RAYTRACING		19
 
 
 static const char *quality_items[] = {
@@ -62,6 +63,7 @@ typedef struct {
 	menutext_s			display;
 	menutext_s			sound;
 	menutext_s			network;
+	menutext_s			raytracing;
 
 	menuslider_s		sfxvolume;
 	menuslider_s		musicvolume;
@@ -101,6 +103,11 @@ static void UI_SoundOptionsMenu_Event( void* ptr, int event ) {
 	case ID_NETWORK:
 		UI_PopMenu();
 		UI_NetworkOptionsMenu();
+		break;
+
+	case ID_RAYTRACING:
+		UI_PopMenu();
+		UI_RaytracingOptionsMenu();
 		break;
 
 	case ID_EFFECTSVOLUME:
@@ -219,6 +226,16 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.network.style				= UI_RIGHT;
 	soundOptionsInfo.network.color				= color_red;
 
+	soundOptionsInfo.raytracing.generic.type	= MTYPE_PTEXT;
+	soundOptionsInfo.raytracing.generic.flags	= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS;
+	soundOptionsInfo.raytracing.generic.id		= ID_RAYTRACING;
+	soundOptionsInfo.raytracing.generic.callback = UI_SoundOptionsMenu_Event;
+	soundOptionsInfo.raytracing.generic.x		= 216;
+	soundOptionsInfo.raytracing.generic.y		= 240 + 2 * PROP_HEIGHT;
+	soundOptionsInfo.raytracing.string			= "RAYTRACING";
+	soundOptionsInfo.raytracing.style			= UI_RIGHT;
+	soundOptionsInfo.raytracing.color			= color_red;
+
 	y = 240 - 1.5 * (BIGCHAR_HEIGHT + 2);
 	soundOptionsInfo.sfxvolume.generic.type		= MTYPE_SLIDER;
 	soundOptionsInfo.sfxvolume.generic.name		= "Effects Volume:";
@@ -278,6 +295,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.display );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.sound );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.network );
+	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.raytracing );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.sfxvolume );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.musicvolume );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.quality );

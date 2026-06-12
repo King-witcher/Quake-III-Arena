@@ -1004,8 +1004,8 @@ void R_Register( void )
 	r_raytracing = ri.Cvar_Get( "r_raytracing", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	// Live tuning knobs for the RT lighting model (not latched -- take effect next frame).
 	r_rtGI           = ri.Cvar_Get( "r_rtGI",           "1",    CVAR_ARCHIVE );
-	r_rtGIIntensity  = ri.Cvar_Get( "r_rtGIIntensity",  "1.5",  CVAR_ARCHIVE );
-	r_rtAmbientScale = ri.Cvar_Get( "r_rtAmbientScale", "0.75", CVAR_ARCHIVE );
+	r_rtGIIntensity  = ri.Cvar_Get( "r_rtGIIntensity",  "1.2",  CVAR_ARCHIVE );
+	r_rtAmbientScale = ri.Cvar_Get( "r_rtAmbientScale", "0.35", CVAR_ARCHIVE );
 	r_rtRays         = ri.Cvar_Get( "r_rtRays",         "6",    CVAR_ARCHIVE );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );

@@ -220,7 +220,8 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |	// scene target
 						  VK_IMAGE_USAGE_SAMPLED_BIT |			// FXAA / RT compute samples it
-						  VK_IMAGE_USAGE_TRANSFER_SRC_BIT;		// SSAA / RT blits it
+						  VK_IMAGE_USAGE_TRANSFER_SRC_BIT |		// SSAA / RT blits it to the swapchain
+						  VK_IMAGE_USAGE_TRANSFER_DST_BIT;		// RT blits the relit result back in
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.offscreenImage[i] ) );
@@ -244,6 +245,21 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 		viewInfo.subresourceRange.levelCount = 1;
 		viewInfo.subresourceRange.layerCount = 1;
 		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.offscreenView[i] ) );
+
+		// ray tracing: albedo G-buffer (2nd colour attachment of the 3D scene pass)
+		if ( vk.rtxEnabled ) {
+			imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;	// must match vk_pipeline.c colorFormats[1]
+			imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+			VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, &vk.albedoImage[i] ) );
+			qvkGetImageMemoryRequirements( vk.device, vk.albedoImage[i], &memReq );
+			allocInfo.allocationSize = memReq.size;
+			allocInfo.memoryTypeIndex = VK_FindMemoryType( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+			VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vk.albedoMemory[i] ) );
+			VK_CHECK( qvkBindImageMemory( vk.device, vk.albedoImage[i], vk.albedoMemory[i], 0 ) );
+			viewInfo.image = vk.albedoImage[i];
+			viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+			VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.albedoView[i] ) );
+		}
 	}
 
 	return qtrue;
@@ -269,6 +285,18 @@ static void VK_DestroyOffscreenTargets( void ) {
 		if ( vk.offscreenMemory[i] ) {
 			qvkFreeMemory( vk.device, vk.offscreenMemory[i], NULL );
 			vk.offscreenMemory[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.albedoView[i] ) {
+			qvkDestroyImageView( vk.device, vk.albedoView[i], NULL );
+			vk.albedoView[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.albedoImage[i] ) {
+			qvkDestroyImage( vk.device, vk.albedoImage[i], NULL );
+			vk.albedoImage[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.albedoMemory[i] ) {
+			qvkFreeMemory( vk.device, vk.albedoMemory[i], NULL );
+			vk.albedoMemory[i] = VK_NULL_HANDLE;
 		}
 	}
 }

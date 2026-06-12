@@ -211,9 +211,9 @@ Translate a state key into a graphics pipeline using dynamic rendering.
 */
 static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	VkPipelineShaderStageCreateInfo			stages[2];
-	VkSpecializationMapEntry				specEntries[2];
+	VkSpecializationMapEntry				specEntries[3];
 	VkSpecializationInfo					specInfo;
-	struct { int alphaTest; int combine; } specData;
+	struct { int alphaTest; int combine; int gbufOpaque; } specData;
 	int										alphaTest;
 	VkVertexInputBindingDescription			vtxBinding;
 	VkVertexInputAttributeDescription		vtxAttribs[4];
@@ -223,8 +223,9 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	VkPipelineRasterizationStateCreateInfo	raster;
 	VkPipelineMultisampleStateCreateInfo	multisample;
 	VkPipelineDepthStencilStateCreateInfo	depthStencil;
-	VkPipelineColorBlendAttachmentState		blendAttach;
+	VkPipelineColorBlendAttachmentState		blendAttach[2];
 	VkPipelineColorBlendStateCreateInfo		blend;
+	VkFormat								colorFormats[2];
 	VkDynamicState							dynStates[3];
 	VkPipelineDynamicStateCreateInfo		dynamic;
 	VkPipelineRenderingCreateInfo			renderingInfo;
@@ -240,13 +241,17 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 
 	specData.alphaTest = alphaTest;
 	specData.combine = key->multitexEnv;	// 0 MODULATE, 1 ADD, 2 REPLACE (single.frag ignores it)
+	specData.gbufOpaque = key->transparent ? 0 : 1;	// G-buffer albedo alpha = opaque mask
 	specEntries[0].constantID = 0;
 	specEntries[0].offset = 0;
 	specEntries[0].size = sizeof( int );
 	specEntries[1].constantID = 1;
 	specEntries[1].offset = sizeof( int );
 	specEntries[1].size = sizeof( int );
-	specInfo.mapEntryCount = 2;
+	specEntries[2].constantID = 2;
+	specEntries[2].offset = 2 * sizeof( int );
+	specEntries[2].size = sizeof( int );
+	specInfo.mapEntryCount = 3;
 	specInfo.pMapEntries = specEntries;
 	specInfo.dataSize = sizeof( specData );
 	specInfo.pData = &specData;
@@ -315,20 +320,23 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	depthStencil.depthCompareOp = ( key->stateBits & GLS_DEPTHFUNC_EQUAL ) ?
 		VK_COMPARE_OP_EQUAL : VK_COMPARE_OP_LESS_OR_EQUAL;
 
-	memset( &blendAttach, 0, sizeof( blendAttach ) );
-	blendAttach.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+	memset( blendAttach, 0, sizeof( blendAttach ) );
+	blendAttach[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 								 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 	if ( ( key->stateBits & GLS_SRCBLEND_BITS ) || ( key->stateBits & GLS_DSTBLEND_BITS ) ) {
-		blendAttach.blendEnable = VK_TRUE;
-		blendAttach.srcColorBlendFactor = blendAttach.srcAlphaBlendFactor = VK_SrcBlendFactor( key->stateBits );
-		blendAttach.dstColorBlendFactor = blendAttach.dstAlphaBlendFactor = VK_DstBlendFactor( key->stateBits );
-		blendAttach.colorBlendOp = blendAttach.alphaBlendOp = VK_BLEND_OP_ADD;
+		blendAttach[0].blendEnable = VK_TRUE;
+		blendAttach[0].srcColorBlendFactor = blendAttach[0].srcAlphaBlendFactor = VK_SrcBlendFactor( key->stateBits );
+		blendAttach[0].dstColorBlendFactor = blendAttach[0].dstAlphaBlendFactor = VK_DstBlendFactor( key->stateBits );
+		blendAttach[0].colorBlendOp = blendAttach[0].alphaBlendOp = VK_BLEND_OP_ADD;
 	}
+	// G-buffer albedo attachment: never blended, always full write (closest opaque wins).
+	blendAttach[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+								 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
 	memset( &blend, 0, sizeof( blend ) );
 	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	blend.attachmentCount = 1;
-	blend.pAttachments = &blendAttach;
+	blend.attachmentCount = key->gbuffer ? 2 : 1;
+	blend.pAttachments = blendAttach;
 
 	dynStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
 	dynStates[1] = VK_DYNAMIC_STATE_SCISSOR;
@@ -338,11 +346,14 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	dynamic.dynamicStateCount = 3;
 	dynamic.pDynamicStates = dynStates;
 
-	// dynamic rendering: declare the attachment formats this pipeline targets
+	// dynamic rendering: declare the attachment formats this pipeline targets.  The 3D
+	// scene pass under ray tracing has a 2nd colour attachment (the albedo G-buffer).
+	colorFormats[0] = vk.surfaceFormat.format;
+	colorFormats[1] = VK_FORMAT_R8G8B8A8_UNORM;		// must match vk.albedoImage
 	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &vk.surfaceFormat.format;
+	renderingInfo.colorAttachmentCount = key->gbuffer ? 2 : 1;
+	renderingInfo.pColorAttachmentFormats = colorFormats;
 	renderingInfo.depthAttachmentFormat = vk.depthFormat;
 	renderingInfo.stencilAttachmentFormat = vk.depthFormat;
 

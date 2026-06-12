@@ -1,23 +1,28 @@
 {
-    // Build + run Quake III Arena from VS Code.
+    // Build + run Quake III Arena from VS Code (x64).
     //
     // Requires the C/C++ extension (ms-vscode.cpptools) for the cppvsdbg debugger.
+    //
+    // The whole project is x64 -- hardware ray tracing (r_raytracing) needs it (the
+    // 32-bit NVIDIA Vulkan driver has no ray query).  Every config builds + runs the
+    // x64 engine (code\x64\Debug|Release\quake3.exe).
     //
     // Filesystem layout (everything on a space-free path, because Quake III's
     // command-line parser splits on spaces and would truncate a Steam path):
     //   run\baseq3\*.pk3                  retail game data, copied from Steam
-    //   run\dev\cgamex86.dll, ...         our freshly built game DLLs
+    //   run\dev\cgamex86.dll, ...         our freshly built x64 game DLLs
     //   run\dev\vm\cgame.qvm, ...         our freshly built QVMs
     //
     // run\dev is loaded as a mod (fs_game=dev) and is searched BEFORE the baseq3
     // paks, so our DLLs/QVMs override the retail ones. sv_pure 0 lets the engine
     // load our loose (non-pak) artifacts.
     //
-    //   vm_game/vm_cgame/vm_ui = 0  -> native DLLs   (run\dev\*x86.dll)
+    //   vm_game/vm_cgame/vm_ui = 0  -> native DLLs   (run\dev\*x86.dll, built x64)
     //   vm_game/vm_cgame/vm_ui = 1  -> interpreted QVMs (run\dev\vm\*.qvm)
     //
-    // The QVM logic runs as bytecode, so it is not C-source debuggable; the QVM
-    // configs let you debug the *engine* while it runs the QVM mods.
+    // Ray tracing is toggled in-game (System -> Video -> Ray Tracing), needs the
+    // Vulkan backend (r_renderapi 1).  The QVM logic runs as bytecode, so it is not
+    // C-source debuggable; the QVM configs let you debug the *engine* under QVM mods.
     "version": "0.2.0",
     "configurations": [
         {
@@ -25,7 +30,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "preLaunchTask": "Quake3: build DLL (Debug)",
-            "program": "${workspaceFolder}\\code\\Debug\\quake3.exe",
+            "program": "${workspaceFolder}\\code\\x64\\Debug\\quake3.exe",
             "cwd": "${workspaceFolder}\\run",
             "args": [
                 "+set", "fs_basepath", "${workspaceFolder}\\run",
@@ -48,7 +53,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "preLaunchTask": "Quake3: build DLL (Release)",
-            "program": "${workspaceFolder}\\code\\Release\\quake3.exe",
+            "program": "${workspaceFolder}\\code\\x64\\Release\\quake3.exe",
             "cwd": "${workspaceFolder}\\run",
             "args": [
                 "+set", "fs_basepath", "${workspaceFolder}\\run",
@@ -70,7 +75,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "preLaunchTask": "Quake3: build QVM (Debug engine)",
-            "program": "${workspaceFolder}\\code\\Debug\\quake3.exe",
+            "program": "${workspaceFolder}\\code\\x64\\Debug\\quake3.exe",
             "cwd": "${workspaceFolder}\\run",
             "args": [
                 "+set", "fs_basepath", "${workspaceFolder}\\run",
@@ -92,7 +97,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "preLaunchTask": "Quake3: build QVM (Release engine)",
-            "program": "${workspaceFolder}\\code\\Release\\quake3.exe",
+            "program": "${workspaceFolder}\\code\\x64\\Release\\quake3.exe",
             "cwd": "${workspaceFolder}\\run",
             "args": [
                 "+set", "fs_basepath", "${workspaceFolder}\\run",

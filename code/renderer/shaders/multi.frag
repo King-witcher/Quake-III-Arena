@@ -9,6 +9,7 @@
 //
 layout( constant_id = 0 ) const int c_alphaTest = 0;	// 0 none, 1 GT0, 2 LT80, 3 GE80
 layout( constant_id = 1 ) const int c_combine   = 0;	// 0 MODULATE, 1 ADD, 2 REPLACE
+layout( constant_id = 2 ) const int c_gbufOpaque = 1;	// 1 opaque, 0 transparent (see single.frag)
 
 layout( set = 0, binding = 0 ) uniform sampler2D u_tex0;
 layout( set = 1, binding = 0 ) uniform sampler2D u_tex1;
@@ -18,9 +19,12 @@ layout( location = 1 ) in vec2 frag_texCoord0;
 layout( location = 2 ) in vec2 frag_texCoord1;
 
 layout( location = 0 ) out vec4 out_color;
+// G-buffer albedo (unit-0 diffuse) for the ray-traced lighting pass; see single.frag.
+layout( location = 1 ) out vec4 out_albedo;
 
 void main() {
-	vec4 a = frag_color * texture( u_tex0, frag_texCoord0 );	// unit 0 output
+	vec4 t0 = texture( u_tex0, frag_texCoord0 );			// unit 0 = diffuse
+	vec4 a = frag_color * t0;								// unit 0 output
 	vec4 b = texture( u_tex1, frag_texCoord1 );				// unit 1 texture
 	vec4 c;
 
@@ -41,4 +45,5 @@ void main() {
 	}
 
 	out_color = c;
+	out_albedo = vec4( t0.rgb, float( c_gbufOpaque ) );	// rgb = albedo; a = opaque mask
 }

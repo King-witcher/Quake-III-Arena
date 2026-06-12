@@ -1,52 +1,21 @@
 {
-    // Build tasks for Quake III Arena.
+    // Build tasks for Quake III Arena (x64).
     //
-    // The engine (quake3.exe) and the three game DLLs (cgamex86.dll,
-    // qagamex86.dll, uix86.dll) are produced by MSBuild from code\quake3.sln.
-    // This machine only has VS 2026 (toolset v145), so the v143 pin in the
-    // .vcxproj files is overridden on the command line.
-    //
-    // Data and deploy steps are plain "xcopy" calls (no scripts). Only the QVM
-    // build uses a script (.vscode\build-qvm.ps1), because it is a ~70-file lcc
-    // compile + q3asm link per VM. xcopy with /d copies only newer files, so the
-    // sync/deploy tasks are cheap to repeat before every launch.
+    // The whole project targets x64 -- hardware ray tracing (r_raytracing) needs it
+    // (the 32-bit NVIDIA Vulkan driver has no ray query).  The VS solution has no x64
+    // solution-config, so .vscode\build-x64.ps1 builds each project directly
+    // (quake3 + the three game DLLs) with the v145 toolset override (VS 2026, no v143)
+    // and deploys the game DLLs to run\dev.  The engine links the renderer statically,
+    // so it is rebuilt by the same script.
     //
     // Filesystem layout (all on a space-free path):
     //   run\baseq3\*.pk3            retail data, copied from the Steam install
-    //   run\dev\*x86.dll            our game DLLs (loaded as fs_game=dev)
+    //   run\dev\*x86.dll            our x64 game DLLs (legacy "x86" names; loaded as fs_game=dev)
     //   run\dev\vm\*.qvm            our QVMs (override the retail ones in the paks)
     //
-    // launch.json points at the four composite tasks at the bottom.
+    // launch.json points at the composite tasks at the bottom.
     "version": "2.0.0",
     "tasks": [
-        {
-            "label": "msbuild: quake3 (Debug)",
-            "type": "process",
-            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
-            "args": [
-                "${workspaceFolder}\\code\\quake3.sln",
-                "/p:Configuration=Debug;Platform=x86;PlatformToolset=v145",
-                "/m",
-                "/nologo"
-            ],
-            "problemMatcher": "$msCompile",
-            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-            "group": "build"
-        },
-        {
-            "label": "msbuild: quake3 (Release)",
-            "type": "process",
-            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
-            "args": [
-                "${workspaceFolder}\\code\\quake3.sln",
-                "/p:Configuration=Release;Platform=x86;PlatformToolset=v145",
-                "/m",
-                "/nologo"
-            ],
-            "problemMatcher": "$msCompile",
-            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-            "group": "build"
-        },
         {
             // One-time copy of the retail paks from Steam into run\baseq3 (no
             // spaces in the path). /d = only newer, /i = dest is a dir, /y =
@@ -62,26 +31,58 @@
             "presentation": { "reveal": "silent", "panel": "shared" }
         },
         {
-            "label": "deploy: game DLLs (Debug)",
+            // x64 engine + game DLLs -> run\dev (build-x64.ps1).
+            "label": "build: x64 (Debug)",
             "type": "process",
-            "command": "xcopy",
+            "command": "powershell.exe",
             "args": [
-                "${workspaceFolder}\\code\\Debug\\*x86.dll",
-                "${workspaceFolder}\\run\\dev\\",
-                "/i", "/y", "/q"
+                "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}\\.vscode\\build-x64.ps1",
+                "-Root", "${workspaceFolder}", "-Config", "Debug"
             ],
-            "presentation": { "reveal": "silent", "panel": "shared" }
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
         },
         {
-            "label": "deploy: game DLLs (Release)",
+            "label": "build: x64 (Release)",
             "type": "process",
-            "command": "xcopy",
+            "command": "powershell.exe",
             "args": [
-                "${workspaceFolder}\\code\\Release\\*x86.dll",
-                "${workspaceFolder}\\run\\dev\\",
-                "/i", "/y", "/q"
+                "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}\\.vscode\\build-x64.ps1",
+                "-Root", "${workspaceFolder}", "-Config", "Release"
             ],
-            "presentation": { "reveal": "silent", "panel": "shared" }
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
+        },
+        {
+            // engine only (x64) -- for the QVM configs, which don't need the game DLLs.
+            "label": "msbuild: quake3 engine (x64 Debug)",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\code\\quake3.vcxproj",
+                "/p:Configuration=Debug;Platform=x64;PlatformToolset=v145",
+                "/m", "/nologo"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
+        },
+        {
+            "label": "msbuild: quake3 engine (x64 Release)",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\code\\quake3.vcxproj",
+                "/p:Configuration=Release;Platform=x64;PlatformToolset=v145",
+                "/m", "/nologo"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "group": "build"
         },
         {
             "label": "build: QVMs (lcc + q3asm)",
@@ -96,32 +97,32 @@
             "group": "build"
         },
 
-        // ---- composite tasks used as preLaunchTask in launch.json ----
+        // ---- composite tasks used as preLaunchTask in launch.json (all x64) ----
         {
             "label": "Quake3: build DLL (Debug)",
             "dependsOrder": "sequence",
-            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Debug)", "deploy: game DLLs (Debug)" ],
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "build: x64 (Debug)" ],
             "group": { "kind": "build", "isDefault": true },
             "problemMatcher": []
         },
         {
             "label": "Quake3: build DLL (Release)",
             "dependsOrder": "sequence",
-            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Release)", "deploy: game DLLs (Release)" ],
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "build: x64 (Release)" ],
             "group": "build",
             "problemMatcher": []
         },
         {
             "label": "Quake3: build QVM (Debug engine)",
             "dependsOrder": "sequence",
-            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Debug)", "build: QVMs (lcc + q3asm)" ],
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 engine (x64 Debug)", "build: QVMs (lcc + q3asm)" ],
             "group": "build",
             "problemMatcher": []
         },
         {
             "label": "Quake3: build QVM (Release engine)",
             "dependsOrder": "sequence",
-            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 (Release)", "build: QVMs (lcc + q3asm)" ],
+            "dependsOn": [ "sync: Steam data -> run\\baseq3", "msbuild: quake3 engine (x64 Release)", "build: QVMs (lcc + q3asm)" ],
             "group": "build",
             "problemMatcher": []
         }

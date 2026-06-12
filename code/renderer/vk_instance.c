@@ -493,11 +493,15 @@ static qboolean VK_CreateDevice( void ) {
 	enabledFeatures.fillModeNonSolid = vk.devFeatures.fillModeNonSolid;	// r_showtris / GLS_POLYMODE_LINE
 	enabledFeatures.samplerAnisotropy = vk.devFeatures.samplerAnisotropy;
 	enabledFeatures.shaderClipDistance = vk.devFeatures.shaderClipDistance;	// mirror/portal gl_ClipDistance
+	enabledFeatures.independentBlend = vk.devFeatures.independentBlend;	// RT G-buffer: per-attachment blend
 
 	memset( &vk13, 0, sizeof( vk13 ) );
 	vk13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
 	vk13.dynamicRendering = VK_TRUE;
 	vk13.synchronization2 = VK_TRUE;
+	// our SPIR-V is compiled targeting Vulkan 1.3, where `discard` lowers to
+	// OpDemoteToHelperInvocation; both are mandatory 1.3 core features.
+	vk13.shaderDemoteToHelperInvocation = VK_TRUE;
 
 	memset( &createInfo, 0, sizeof( createInfo ) );
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

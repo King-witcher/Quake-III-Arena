@@ -88,7 +88,9 @@ typedef struct {
 	byte			shaderType;		// vkShaderType_t
 	byte			multitexEnv;	// GL_MODULATE/GL_ADD/GL_REPLACE for unit 1
 	byte			polygonOffset;	// shader_t.polygonOffset -> depthBias
-	byte			pad[3];
+	byte			gbuffer;		// 1 = 3D scene pass under RT: also write the albedo attachment
+	byte			transparent;	// 1 = surface sort > SS_OPAQUE: tag G-buffer as non-opaque (RT skips it)
+	byte			pad[1];
 } vkPipelineKey_t;
 
 //
@@ -198,6 +200,10 @@ typedef struct {
 	// r_raytracing gating in VK_SelectPhysicalDevice / VK_CreateDevice.
 	qboolean				rtxSupported;
 	qboolean				rtxEnabled;
+	// RT deferred flow: the 3D scene is split into an opaque pass (writes the G-buffer)
+	// and a transparent pass; rtRelit marks that the opaque offscreen has been relit and
+	// the transparent pass is now drawing on top of the relit image.  Reset each frame.
+	qboolean				rtRelit;
 
 	// "current render target" geometry, so the per-draw viewport code is agnostic
 	// to which target it is drawing into.  During the 3D scene pass these track the
@@ -214,6 +220,12 @@ typedef struct {
 	VkImage					offscreenImage[VK_NUM_FRAMES];
 	VkDeviceMemory			offscreenMemory[VK_NUM_FRAMES];
 	VkImageView				offscreenView[VK_NUM_FRAMES];
+
+	// ray-tracing G-buffer: per-pixel material albedo, written as a 2nd color attachment
+	// during the 3D scene pass (only when rtxEnabled), sampled by the RT lighting pass.
+	VkImage					albedoImage[VK_NUM_FRAMES];
+	VkDeviceMemory			albedoMemory[VK_NUM_FRAMES];
+	VkImageView				albedoView[VK_NUM_FRAMES];
 
 	// post-processing (FXAA): a fullscreen pass samples the offscreen target.
 	// Own descriptor pool (the image pool in vk_image.c is recreated per map load).

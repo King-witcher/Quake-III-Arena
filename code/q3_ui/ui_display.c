@@ -47,6 +47,7 @@ DISPLAY OPTIONS MENU
 #define ID_BACK				16
 #define ID_MODE				17
 #define ID_FULLSCREEN		18
+#define ID_RAYTRACING		19
 
 
 typedef struct {
@@ -60,6 +61,7 @@ typedef struct {
 	menutext_s		display;
 	menutext_s		sound;
 	menutext_s		network;
+	menutext_s		raytracing;
 
 	menuslider_s	brightness;
 	menuslider_s	screensize;
@@ -259,6 +261,11 @@ static void UI_DisplayOptionsMenu_Event( void* ptr, int event ) {
 		UI_NetworkOptionsMenu();
 		break;
 
+	case ID_RAYTRACING:
+		UI_PopMenu();
+		UI_RaytracingOptionsMenu();
+		break;
+
 	case ID_BRIGHTNESS:
 		trap_Cvar_SetValue( "r_gamma", displayOptionsInfo.brightness.curvalue / 10.0f );
 		break;
@@ -353,6 +360,16 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	displayOptionsInfo.network.style				= UI_RIGHT;
 	displayOptionsInfo.network.color				= color_red;
 
+	displayOptionsInfo.raytracing.generic.type		= MTYPE_PTEXT;
+	displayOptionsInfo.raytracing.generic.flags		= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS;
+	displayOptionsInfo.raytracing.generic.id		= ID_RAYTRACING;
+	displayOptionsInfo.raytracing.generic.callback	= UI_DisplayOptionsMenu_Event;
+	displayOptionsInfo.raytracing.generic.x			= 216;
+	displayOptionsInfo.raytracing.generic.y			= 240 + 2 * PROP_HEIGHT;
+	displayOptionsInfo.raytracing.string			= "RAYTRACING";
+	displayOptionsInfo.raytracing.style				= UI_RIGHT;
+	displayOptionsInfo.raytracing.color				= color_red;
+
 	y = 240 - 2 * (BIGCHAR_HEIGHT+2);
 	displayOptionsInfo.brightness.generic.type		= MTYPE_SLIDER;
 	displayOptionsInfo.brightness.generic.name		= "Brightness:";
@@ -428,6 +445,7 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.display );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.sound );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.network );
+	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.raytracing );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.brightness );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.screensize );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.mode );
