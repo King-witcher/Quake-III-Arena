@@ -487,16 +487,49 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 		return;
 	}
 
-	// build interleaved vertices from the tess arrays
-	for ( i = 0; i < numVerts; i++ ) {
-		verts[i].xyz[0] = tess.xyz[i][0];
-		verts[i].xyz[1] = tess.xyz[i][1];
-		verts[i].xyz[2] = tess.xyz[i][2];
-		Com_Memcpy( verts[i].color, tess.svars.colors[i], 4 );
-		verts[i].tc0[0] = tess.svars.texcoords[0][i][0];
-		verts[i].tc0[1] = tess.svars.texcoords[0][i][1];
-		verts[i].tc1[0] = tess.svars.texcoords[1][i][0];
-		verts[i].tc1[1] = tess.svars.texcoords[1][i][1];
+	// build interleaved vertices from whatever client arrays the GL path bound
+	// (tess.svars for the generic path, local arrays for dlights, etc.)
+	{
+		const byte	*xyzBase = (const byte *)vk.draw.xyzPtr;
+		const byte	*colBase = (const byte *)vk.draw.colorPtr;
+		const byte	*tc0Base = (const byte *)vk.draw.tcPtr[0];
+		const byte	*tc1Base = (const byte *)vk.draw.tcPtr[1];
+		int			xyzStride = vk.draw.xyzStride ? vk.draw.xyzStride : (int)sizeof( tess.xyz[0] );
+		int			colStride = vk.draw.colorStride ? vk.draw.colorStride : 4;
+		int			tc0Stride = vk.draw.tcStride[0] ? vk.draw.tcStride[0] : (int)sizeof( vec2_t );
+		int			tc1Stride = vk.draw.tcStride[1] ? vk.draw.tcStride[1] : (int)sizeof( vec2_t );
+
+		if ( !xyzBase ) {	// some paths leave xyz implicit -> fall back to tess
+			xyzBase = (const byte *)tess.xyz;
+			xyzStride = (int)sizeof( tess.xyz[0] );
+		}
+
+		for ( i = 0; i < numVerts; i++ ) {
+			const float *p = (const float *)( xyzBase + i * xyzStride );
+			verts[i].xyz[0] = p[0];
+			verts[i].xyz[1] = p[1];
+			verts[i].xyz[2] = p[2];
+
+			if ( colBase ) {
+				Com_Memcpy( verts[i].color, colBase + i * colStride, 4 );
+			} else {
+				verts[i].color[0] = verts[i].color[1] = verts[i].color[2] = verts[i].color[3] = 255;
+			}
+
+			if ( tc0Base ) {
+				const float *t = (const float *)( tc0Base + i * tc0Stride );
+				verts[i].tc0[0] = t[0]; verts[i].tc0[1] = t[1];
+			} else {
+				verts[i].tc0[0] = verts[i].tc0[1] = 0.0f;
+			}
+
+			if ( tc1Base ) {
+				const float *t = (const float *)( tc1Base + i * tc1Stride );
+				verts[i].tc1[0] = t[0]; verts[i].tc1[1] = t[1];
+			} else {
+				verts[i].tc1[0] = verts[i].tc1[1] = 0.0f;
+			}
+		}
 	}
 
 	if ( !VK_StreamVertexes( verts, numVerts, &vtxOffset ) ) {

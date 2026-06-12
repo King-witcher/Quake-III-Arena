@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "tr_local.h"
 #include "qvk.h"
+#include "vk_local.h"		// for vk.draw (client-array capture under Vulkan)
 
 // The bootstrap pointer is owned here; the platform layer (win_vk.c) fills it
 // in from vulkan-1.dll before any of the loaders below run.
@@ -113,8 +114,24 @@ qboolean QVK_InitDeviceFunctions( VkDevice device ) {
 // again via QGL_Init if the backend switches back to GL on a vid_restart.
 //
 static void APIENTRY VKstub_ClientState( GLenum a ) {}
-static void APIENTRY VKstub_Pointer( GLint a, GLenum b, GLsizei c, const GLvoid *d ) {}
 static void APIENTRY VKstub_Cap( GLenum a ) {}
+
+// Client-array "pointers": instead of being inert, these capture the source the
+// GL path would draw from, so VK_DrawElements can read exactly that (this is what
+// makes the dlight pass, fog pass and vertex-lit path render correctly).
+static void APIENTRY VKcap_VertexPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+	vk.draw.xyzPtr = ptr;
+	vk.draw.xyzStride = stride ? stride : 3 * (int)sizeof( float );
+}
+static void APIENTRY VKcap_ColorPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+	vk.draw.colorPtr = ptr;
+	vk.draw.colorStride = stride ? stride : 4;
+}
+static void APIENTRY VKcap_TexCoordPointer( GLint size, GLenum type, GLsizei stride, const GLvoid *ptr ) {
+	int tmu = glState.currenttmu & 1;
+	vk.draw.tcPtr[tmu] = ptr;
+	vk.draw.tcStride[tmu] = stride ? stride : 2 * (int)sizeof( float );
+}
 static void APIENTRY VKstub_PolygonOffset( GLfloat a, GLfloat b ) {}
 static void APIENTRY VKstub_PolygonMode( GLenum a, GLenum b ) {}
 static void APIENTRY VKstub_DepthRange( GLclampd a, GLclampd b ) {}
@@ -133,9 +150,9 @@ void VK_InstallInertGLProcs( void ) {
 	// vertex arrays + draw-state (stage iterators)
 	qglEnableClientState  = VKstub_ClientState;
 	qglDisableClientState = VKstub_ClientState;
-	qglVertexPointer      = VKstub_Pointer;
-	qglColorPointer       = VKstub_Pointer;
-	qglTexCoordPointer    = VKstub_Pointer;
+	qglVertexPointer      = VKcap_VertexPointer;
+	qglColorPointer       = VKcap_ColorPointer;
+	qglTexCoordPointer    = VKcap_TexCoordPointer;
 	qglEnable             = VKstub_Cap;
 	qglDisable            = VKstub_Cap;
 	qglPolygonOffset      = VKstub_PolygonOffset;

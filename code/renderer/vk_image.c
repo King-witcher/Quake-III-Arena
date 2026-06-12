@@ -39,6 +39,7 @@ typedef struct {
 	int			filterMin;
 	int			filterMax;
 	qboolean	mipmap;
+	qboolean	border;			// CLAMP_TO_BORDER + opaque white (the *fog image)
 	VkSampler	sampler;
 } vkSamplerCacheEntry_t;
 
@@ -70,7 +71,7 @@ Return a cached VkSampler matching the requested wrap/filter/mip, creating it on
 first use.  Translates the Q3 GL filter enums to Vulkan filter + mipmap modes.
 ================
 */
-static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap ) {
+static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap, qboolean border ) {
 	VkSamplerCreateInfo	info;
 	VkSampler			sampler;
 	int					i;
@@ -81,7 +82,8 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap ) {
 		if ( s_samplers[i].wrapClampMode == wrapClampMode &&
 			 s_samplers[i].filterMin == filterMin &&
 			 s_samplers[i].filterMax == filterMax &&
-			 s_samplers[i].mipmap == mipmap ) {
+			 s_samplers[i].mipmap == mipmap &&
+			 s_samplers[i].border == border ) {
 			return s_samplers[i].sampler;
 		}
 	}
@@ -109,7 +111,10 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap ) {
 		info.minFilter = VK_FILTER_LINEAR;  info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;  break;
 	}
 
-	if ( wrapClampMode == GL_CLAMP ) {
+	if ( border ) {
+		// the fog density LUT samples opaque white outside [0,1] (full fog)
+		info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	} else if ( wrapClampMode == GL_CLAMP ) {
 		info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	} else {
 		info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -128,6 +133,7 @@ static VkSampler VK_GetSampler( int wrapClampMode, qboolean mipmap ) {
 		s_samplers[s_numSamplers].filterMin = filterMin;
 		s_samplers[s_numSamplers].filterMax = filterMax;
 		s_samplers[s_numSamplers].mipmap = mipmap;
+		s_samplers[s_numSamplers].border = border;
 		s_samplers[s_numSamplers].sampler = sampler;
 		s_numSamplers++;
 	}
@@ -192,7 +198,9 @@ static void VK_UpdateImageDescriptor( image_t *image ) {
 	VkDescriptorImageInfo	imageInfo;
 	VkWriteDescriptorSet	write;
 
-	vki->sampler = VK_GetSampler( image->wrapClampMode, image->mipmap );
+	// the fog density LUT (*fog) needs CLAMP_TO_BORDER with opaque-white border
+	vki->sampler = VK_GetSampler( image->wrapClampMode, image->mipmap,
+		(qboolean)( Q_stricmp( image->imgName, "*fog" ) == 0 ) );
 
 	memset( &imageInfo, 0, sizeof( imageInfo ) );
 	imageInfo.sampler = vki->sampler;

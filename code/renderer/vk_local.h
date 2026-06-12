@@ -163,6 +163,12 @@ typedef struct {
 		int			cullType;			// last GL_Cull
 		image_t		*image[2];			// bound texture per TMU
 		int			multitexEnv;		// last GL_TexEnv on unit 1
+		// captured client-array sources (so VK_DrawElements reads exactly what the
+		// GL path would: tess.svars for the generic path, the local arrays for the
+		// dlight pass, tess.texCoords for the vertex-lit path, etc.)
+		const void	*xyzPtr;	int xyzStride;
+		const void	*colorPtr;	int colorStride;
+		const void	*tcPtr[2];	int tcStride[2];
 	} draw;
 } vk_t;
 
