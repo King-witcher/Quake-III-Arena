@@ -309,28 +309,37 @@ qboolean VK_CreateSwapchain( void ) {
 	glConfig.vidWidth = vk.extent.width;
 	glConfig.vidHeight = vk.extent.height;
 
-	// resolve the antialiasing mode (latched cvar; read once per swapchain build).
+	// resolve the antialiasing mode (latched cvar; read once per swapchain build):
+	//   0 = Off, 1 = FXAA, 2 = SSAA 2x, 3 = SSAA 4x.
 	// FXAA renders at display res into an offscreen image then runs a post pass;
-	// SSAA renders the scene 2x larger (renderExtent) then downsamples with a blit.
-	vk.aaMode = r_antialiasing ? r_antialiasing->integer : 0;
-	if ( vk.aaMode < 0 || vk.aaMode > VK_AA_SSAA ) {
-		vk.aaMode = VK_AA_OFF;
-	}
-	if ( vk.aaMode == VK_AA_SSAA ) {
-		// integer supersample factor per axis; clamp down so the (factor x) offscreen
-		// never exceeds the device's max 2D image dimension (8x is large at high res).
-		int factor = VK_SSAA_FACTOR;
-		uint32_t maxDim = vk.devProps.limits.maxImageDimension2D;
-		while ( factor > 1 &&
-			( (uint32_t)vk.extent.width * factor > maxDim || (uint32_t)vk.extent.height * factor > maxDim ) ) {
-			factor--;
+	// SSAA renders the scene (factor x) larger (renderExtent) then box-downsamples it.
+	{
+		int aaSel = r_antialiasing ? r_antialiasing->integer : 0;
+		int wantFactor = 1;		// requested SSAA supersample per axis (1 = not SSAA)
+
+		switch ( aaSel ) {
+		case 1:  vk.aaMode = VK_AA_FXAA; break;
+		case 2:  vk.aaMode = VK_AA_SSAA; wantFactor = 2; break;	// SSAA 2x
+		case 3:  vk.aaMode = VK_AA_SSAA; wantFactor = 4; break;	// SSAA 4x
+		default: vk.aaMode = VK_AA_OFF;  break;					// 0 or out of range
 		}
-		if ( factor < VK_SSAA_FACTOR ) {
-			ri.Printf( PRINT_WARNING, "...SSAA clamped to %dx (device max image %u)\n", factor, maxDim );
+
+		if ( vk.aaMode == VK_AA_SSAA ) {
+			// clamp the factor down so the (factor x) offscreen never exceeds the
+			// device's max 2D image dimension (4x is large at high res).
+			int factor = wantFactor;
+			uint32_t maxDim = vk.devProps.limits.maxImageDimension2D;
+			while ( factor > 1 &&
+				( (uint32_t)vk.extent.width * factor > maxDim || (uint32_t)vk.extent.height * factor > maxDim ) ) {
+				factor--;
+			}
+			if ( factor < wantFactor ) {
+				ri.Printf( PRINT_WARNING, "...SSAA clamped to %dx (device max image %u)\n", factor, maxDim );
+			}
+			vk.ssaaFactor = factor;
+		} else {
+			vk.ssaaFactor = 1;
 		}
-		vk.ssaaFactor = factor;
-	} else {
-		vk.ssaaFactor = 1;
 	}
 	vk.ssaaScale = (float)vk.ssaaFactor;
 	vk.renderExtent.width  = vk.extent.width  * vk.ssaaFactor;

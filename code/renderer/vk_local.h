@@ -34,11 +34,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Number of frames the CPU may have in flight before waiting on the GPU.
 #define VK_NUM_FRAMES		2
 
-// SSAA supersample factor per axis (the scene renders factor x larger, then a box
-// downsample resolves it).  Clamped down at runtime if the offscreen would exceed
-// the device's max 2D image dimension.
-#define VK_SSAA_FACTOR		4
-
 // A swapchain rarely exceeds 3-4 images; cap generously.
 #define MAX_SWAPCHAIN_IMAGES	8
 

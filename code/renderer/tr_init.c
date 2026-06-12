@@ -346,23 +346,65 @@ typedef struct vidmode_s
 	float		pixelAspect;		// pixel width / height
 } vidmode_t;
 
+// Modern resolution table indexed by r_mode.  Grouped by aspect ratio (4:3, 5:4, 16:9,
+// 16:10, 21:9 ultrawide).  The UI (Screen menu) mirrors this table and only offers the
+// entries that fit the desktop — see R_UpdateAvailableModes / r_availableModes.
 vidmode_t r_vidModes[] =
 {
-    { "Mode  0: 320x240",		320,	240,	1 },
-    { "Mode  1: 400x300",		400,	300,	1 },
-    { "Mode  2: 512x384",		512,	384,	1 },
-    { "Mode  3: 640x480",		640,	480,	1 },
-    { "Mode  4: 800x600",		800,	600,	1 },
-    { "Mode  5: 960x720",		960,	720,	1 },
-    { "Mode  6: 1024x768",		1024,	768,	1 },
-    { "Mode  7: 1152x864",		1152,	864,	1 },
-    { "Mode  8: 1280x1024",		1280,	1024,	1 },
-    { "Mode  9: 1600x1200",		1600,	1200,	1 },
-    { "Mode 10: 2048x1536",		2048,	1536,	1 },
-    { "Mode 11: 856x480 (wide)",856,	480,	1 },
-    { "Mode 12: 1920x1080",		1920,	1080,	1 }
+    // 4:3
+    { "Mode  0: 640x480 (4:3)",		640,	480,	1 },
+    { "Mode  1: 800x600 (4:3)",		800,	600,	1 },
+    { "Mode  2: 1024x768 (4:3)",	1024,	768,	1 },
+    { "Mode  3: 1280x960 (4:3)",	1280,	960,	1 },
+    { "Mode  4: 1600x1200 (4:3)",	1600,	1200,	1 },
+    // 5:4
+    { "Mode  5: 1280x1024 (5:4)",	1280,	1024,	1 },
+    // 16:9
+    { "Mode  6: 1280x720 (16:9)",	1280,	720,	1 },
+    { "Mode  7: 1366x768 (16:9)",	1366,	768,	1 },
+    { "Mode  8: 1600x900 (16:9)",	1600,	900,	1 },
+    { "Mode  9: 1920x1080 (16:9)",	1920,	1080,	1 },
+    { "Mode 10: 2560x1440 (16:9)",	2560,	1440,	1 },
+    { "Mode 11: 3840x2160 (16:9)",	3840,	2160,	1 },
+    // 16:10
+    { "Mode 12: 1280x800 (16:10)",	1280,	800,	1 },
+    { "Mode 13: 1680x1050 (16:10)",	1680,	1050,	1 },
+    { "Mode 14: 1920x1200 (16:10)",	1920,	1200,	1 },
+    { "Mode 15: 2560x1600 (16:10)",	2560,	1600,	1 },
+    // 21:9 ultrawide
+    { "Mode 16: 2560x1080 (21:9)",	2560,	1080,	1 },
+    { "Mode 17: 3440x1440 (21:9)",	3440,	1440,	1 },
+    { "Mode 18: 3840x1600 (21:9)",	3840,	1600,	1 }
 };
 static int	s_numVidModes = ( sizeof( r_vidModes ) / sizeof( r_vidModes[0] ) );
+
+/*
+** R_UpdateAvailableModes
+**
+** Publishes, into the read-only "r_availableModes" cvar, the subset of r_vidModes that
+** fits the desktop (width/height passed in by the platform window code).  The Screen menu
+** reads this list so it never offers a resolution the monitor cannot display (e.g. no 4K
+** entry on a 1080p panel).  A zero/unknown desktop size publishes the whole table.
+*/
+void R_UpdateAvailableModes( int desktopWidth, int desktopHeight ) {
+	char	buf[1024];
+	char	entry[32];
+	int		i;
+
+	buf[0] = '\0';
+	for ( i = 0; i < s_numVidModes; i++ ) {
+		if ( desktopWidth > 0 && desktopHeight > 0 &&
+			( r_vidModes[i].width > desktopWidth || r_vidModes[i].height > desktopHeight ) ) {
+			continue;
+		}
+		Com_sprintf( entry, sizeof( entry ), "%dx%d", r_vidModes[i].width, r_vidModes[i].height );
+		if ( buf[0] ) {
+			Q_strcat( buf, sizeof( buf ), " " );
+		}
+		Q_strcat( buf, sizeof( buf ), entry );
+	}
+	ri.Cvar_Set( "r_availableModes", buf );
+}
 
 qboolean R_GetModeInfo( int *width, int *height, float *windowAspect, int mode ) {
 	vidmode_t	*vm;
@@ -937,8 +979,8 @@ void R_Register( void )
 	// 0 = OpenGL (default), 1 = Vulkan.  Latched: only takes effect on the next
 	// vid_restart, exactly like r_mode / r_fullscreen.
 	r_renderapi = ri.Cvar_Get( "r_renderapi", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	// 0 = Off, 1 = FXAA, 2 = SSAA.  Vulkan-only (treated as Off under OpenGL); latched,
-	// applied on the next vid_restart like r_renderapi / r_mode.
+	// 0 = Off, 1 = FXAA, 2 = SSAA 2x, 3 = SSAA 4x.  Vulkan-only (treated as Off under
+	// OpenGL); latched, applied on the next vid_restart like r_renderapi / r_mode.
 	r_antialiasing = ri.Cvar_Get( "r_antialiasing", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	// 1 = Off, 2/4/8 = anisotropic filtering ratio.  Vulkan-only (inert under OpenGL);
 	// latched, applied on the next vid_restart like r_antialiasing.
@@ -976,8 +1018,11 @@ void R_Register( void )
 	r_depthbits = ri.Cvar_Get( "r_depthbits", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_overBrightBits = ri.Cvar_Get ("r_overBrightBits", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH);
-	r_mode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
+	r_mode = ri.Cvar_Get( "r_mode", "6", CVAR_ARCHIVE | CVAR_LATCH );	// 1280x720 (safe modern default)
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	// Read-only list of desktop-supported resolutions, published by R_UpdateAvailableModes
+	// once the window is created; the Screen menu reads it to filter the Video Mode list.
+	ri.Cvar_Get( "r_availableModes", "", CVAR_ROM );
 	r_customwidth = ri.Cvar_Get( "r_customwidth", "1600", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customheight = ri.Cvar_Get( "r_customheight", "1024", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );

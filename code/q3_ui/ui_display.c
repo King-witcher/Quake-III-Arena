@@ -35,6 +35,8 @@ DISPLAY OPTIONS MENU
 #define ART_FRAMER			"menu/art/frame1_r"
 #define ART_BACK0			"menu/art/back_0"
 #define ART_BACK1			"menu/art/back_1"
+#define ART_ACCEPT0			"menu/art/accept_0"
+#define ART_ACCEPT1			"menu/art/accept_1"
 
 #define ID_GRAPHICS			10
 #define ID_DISPLAY			11
@@ -43,6 +45,8 @@ DISPLAY OPTIONS MENU
 #define ID_BRIGHTNESS		14
 #define ID_SCREENSIZE		15
 #define ID_BACK				16
+#define ID_MODE				17
+#define ID_FULLSCREEN		18
 
 
 typedef struct {
@@ -59,11 +63,171 @@ typedef struct {
 
 	menuslider_s	brightness;
 	menuslider_s	screensize;
+	menulist_s		mode;
+	menulist_s		fs;
 
+	menubitmap_s	apply;
 	menubitmap_s	back;
+
+	int				initial_mode;
+	int				initial_fs;
 } displayOptionsInfo_t;
 
 static displayOptionsInfo_t	displayOptionsInfo;
+
+// Video Mode table — MUST mirror r_vidModes[] in the renderer (tr_init.c) one-to-one,
+// since the array index is the r_mode value.  The Screen menu only shows the entries the
+// desktop can actually display (from the r_availableModes cvar the renderer publishes), so
+// e.g. a 1080p panel never lists the 4K / ultrawide modes.
+typedef struct {
+	const char	*label;
+	int			width;
+	int			height;
+} uiVidMode_t;
+
+static const uiVidMode_t ui_vidModes[] =
+{
+	{ "640x480 (4:3)",		640,	480  },	// 0
+	{ "800x600 (4:3)",		800,	600  },	// 1
+	{ "1024x768 (4:3)",		1024,	768  },	// 2
+	{ "1280x960 (4:3)",		1280,	960  },	// 3
+	{ "1600x1200 (4:3)",	1600,	1200 },	// 4
+	{ "1280x1024 (5:4)",	1280,	1024 },	// 5
+	{ "1280x720 (16:9)",	1280,	720  },	// 6
+	{ "1366x768 (16:9)",	1366,	768  },	// 7
+	{ "1600x900 (16:9)",	1600,	900  },	// 8
+	{ "1920x1080 (16:9)",	1920,	1080 },	// 9
+	{ "2560x1440 (16:9)",	2560,	1440 },	// 10
+	{ "3840x2160 (16:9)",	3840,	2160 },	// 11
+	{ "1280x800 (16:10)",	1280,	800  },	// 12
+	{ "1680x1050 (16:10)",	1680,	1050 },	// 13
+	{ "1920x1200 (16:10)",	1920,	1200 },	// 14
+	{ "2560x1600 (16:10)",	2560,	1600 },	// 15
+	{ "2560x1080 (21:9)",	2560,	1080 },	// 16
+	{ "3440x1440 (21:9)",	3440,	1440 },	// 17
+	{ "3840x1600 (21:9)",	3840,	1600 }	// 18
+};
+#define UI_NUM_VIDMODES ( (int)( sizeof( ui_vidModes ) / sizeof( ui_vidModes[0] ) ) )
+
+// Filled by Screen_BuildModeList(): the visible (desktop-supported) subset.
+static const char	*display_mode_names[UI_NUM_VIDMODES + 1];	// spinner labels (NULL-terminated)
+static int			 display_mode_map[UI_NUM_VIDMODES];			// spinner index -> r_mode index
+static int			 display_num_modes;
+
+static const char *display_enabled_names[] =
+{
+	"Off",
+	"On",
+	0
+};
+
+/*
+=================
+Screen_ResIsAvailable
+
+True if "WxH" appears as a whitespace-delimited token in the r_availableModes list.
+=================
+*/
+static qboolean Screen_ResIsAvailable( const char *list, const char *token ) {
+	const char	*p = list;
+	int			tlen = strlen( token );
+
+	while ( *p ) {
+		while ( *p == ' ' ) {
+			p++;
+		}
+		if ( !strncmp( p, token, tlen ) && ( p[tlen] == ' ' || p[tlen] == '\0' ) ) {
+			return qtrue;
+		}
+		while ( *p && *p != ' ' ) {
+			p++;
+		}
+	}
+	return qfalse;
+}
+
+/*
+=================
+Screen_BuildModeList
+
+Build the Video Mode spinner labels (and the spinner-index -> r_mode map) from the
+desktop-supported resolutions the renderer published in r_availableModes.  Falls back to
+the full table if the cvar is empty (e.g. the renderer has not created a window yet).
+=================
+*/
+static void Screen_BuildModeList( void ) {
+	char	avail[1024];
+	char	token[32];
+	int		i;
+
+	trap_Cvar_VariableStringBuffer( "r_availableModes", avail, sizeof( avail ) );
+
+	display_num_modes = 0;
+	for ( i = 0; i < UI_NUM_VIDMODES; i++ ) {
+		Com_sprintf( token, sizeof( token ), "%dx%d", ui_vidModes[i].width, ui_vidModes[i].height );
+		if ( avail[0] && !Screen_ResIsAvailable( avail, token ) ) {
+			continue;
+		}
+		display_mode_names[display_num_modes] = ui_vidModes[i].label;
+		display_mode_map[display_num_modes]   = i;
+		display_num_modes++;
+	}
+
+	if ( display_num_modes == 0 ) {
+		// nothing matched (unexpected) — fall back to the whole table
+		for ( i = 0; i < UI_NUM_VIDMODES; i++ ) {
+			display_mode_names[i] = ui_vidModes[i].label;
+			display_mode_map[i]   = i;
+		}
+		display_num_modes = UI_NUM_VIDMODES;
+	}
+
+	display_mode_names[display_num_modes] = NULL;
+}
+
+/*
+=================
+UI_DisplayOptionsMenu_ApplyChanges
+
+Video Mode and Fullscreen require a vid_restart, so (unlike brightness/screen size,
+which are applied live) they are committed through an Apply button.
+=================
+*/
+static void UI_DisplayOptionsMenu_ApplyChanges( void *unused, int notification ) {
+	if ( notification != QM_ACTIVATED ) {
+		return;
+	}
+
+	{
+		int sel = displayOptionsInfo.mode.curvalue;
+		if ( sel < 0 || sel >= display_num_modes ) {
+			sel = 0;
+		}
+		trap_Cvar_SetValue( "r_mode", display_mode_map[sel] );
+	}
+	trap_Cvar_SetValue( "r_fullscreen", displayOptionsInfo.fs.curvalue );
+	trap_Cmd_ExecuteText( EXEC_APPEND, "vid_restart\n" );
+}
+
+
+/*
+=================
+UI_DisplayOptionsMenu_Draw
+
+Reveal the Apply button only while the Video Mode / Fullscreen selection differs from
+the values that are currently live.
+=================
+*/
+static void UI_DisplayOptionsMenu_Draw( void ) {
+	displayOptionsInfo.apply.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
+
+	if ( displayOptionsInfo.initial_mode != displayOptionsInfo.mode.curvalue ||
+		 displayOptionsInfo.initial_fs   != displayOptionsInfo.fs.curvalue ) {
+		displayOptionsInfo.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
+
+	Menu_Draw( &displayOptionsInfo.menu );
+}
 
 
 /*
@@ -123,6 +287,7 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	UI_DisplayOptionsMenu_Cache();
 	displayOptionsInfo.menu.wrapAround = qtrue;
 	displayOptionsInfo.menu.fullscreen = qtrue;
+	displayOptionsInfo.menu.draw       = UI_DisplayOptionsMenu_Draw;
 
 	displayOptionsInfo.banner.generic.type		= MTYPE_BTEXT;
 	displayOptionsInfo.banner.generic.flags		= QMF_CENTER_JUSTIFY;
@@ -188,7 +353,7 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	displayOptionsInfo.network.style				= UI_RIGHT;
 	displayOptionsInfo.network.color				= color_red;
 
-	y = 240 - 1 * (BIGCHAR_HEIGHT+2);
+	y = 240 - 2 * (BIGCHAR_HEIGHT+2);
 	displayOptionsInfo.brightness.generic.type		= MTYPE_SLIDER;
 	displayOptionsInfo.brightness.generic.name		= "Brightness:";
 	displayOptionsInfo.brightness.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -213,6 +378,38 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	displayOptionsInfo.screensize.minvalue			= 3;
     displayOptionsInfo.screensize.maxvalue			= 10;
 
+	// references/modifies "r_mode" (committed via the Apply button -> vid_restart).
+	// Only desktop-supported resolutions are listed; see Screen_BuildModeList.
+	Screen_BuildModeList();
+	y += BIGCHAR_HEIGHT+2;
+	displayOptionsInfo.mode.generic.type			= MTYPE_SPINCONTROL;
+	displayOptionsInfo.mode.generic.name			= "Video Mode:";
+	displayOptionsInfo.mode.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	displayOptionsInfo.mode.generic.id				= ID_MODE;
+	displayOptionsInfo.mode.generic.x				= 400;
+	displayOptionsInfo.mode.generic.y				= y;
+	displayOptionsInfo.mode.itemnames				= display_mode_names;
+
+	// references/modifies "r_fullscreen" (committed via the Apply button -> vid_restart)
+	y += BIGCHAR_HEIGHT+2;
+	displayOptionsInfo.fs.generic.type				= MTYPE_SPINCONTROL;
+	displayOptionsInfo.fs.generic.name				= "Fullscreen:";
+	displayOptionsInfo.fs.generic.flags				= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	displayOptionsInfo.fs.generic.id				= ID_FULLSCREEN;
+	displayOptionsInfo.fs.generic.x					= 400;
+	displayOptionsInfo.fs.generic.y					= y;
+	displayOptionsInfo.fs.itemnames					= display_enabled_names;
+
+	displayOptionsInfo.apply.generic.type		= MTYPE_BITMAP;
+	displayOptionsInfo.apply.generic.name		= ART_ACCEPT0;
+	displayOptionsInfo.apply.generic.flags		= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS|QMF_HIDDEN|QMF_INACTIVE;
+	displayOptionsInfo.apply.generic.callback	= UI_DisplayOptionsMenu_ApplyChanges;
+	displayOptionsInfo.apply.generic.x			= 640;
+	displayOptionsInfo.apply.generic.y			= 480-64;
+	displayOptionsInfo.apply.width				= 128;
+	displayOptionsInfo.apply.height				= 64;
+	displayOptionsInfo.apply.focuspic			= ART_ACCEPT1;
+
 	displayOptionsInfo.back.generic.type		= MTYPE_BITMAP;
 	displayOptionsInfo.back.generic.name		= ART_BACK0;
 	displayOptionsInfo.back.generic.flags		= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
@@ -233,10 +430,42 @@ static void UI_DisplayOptionsMenu_Init( void ) {
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.network );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.brightness );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.screensize );
+	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.mode );
+	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.fs );
+	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.apply );
 	Menu_AddItem( &displayOptionsInfo.menu, ( void * ) &displayOptionsInfo.back );
 
 	displayOptionsInfo.brightness.curvalue  = trap_Cvar_VariableValue("r_gamma") * 10;
 	displayOptionsInfo.screensize.curvalue  = trap_Cvar_VariableValue( "cg_viewsize")/10;
+
+	// map the live r_mode index onto the visible spinner entry; if it is not available
+	// (e.g. a custom/oversized mode), fall back to the current resolution, then to 0
+	{
+		int rmode = (int)trap_Cvar_VariableValue( "r_mode" );
+		int i, sel = -1;
+
+		for ( i = 0; i < display_num_modes; i++ ) {
+			if ( display_mode_map[i] == rmode ) {
+				sel = i;
+				break;
+			}
+		}
+		if ( sel < 0 ) {
+			for ( i = 0; i < display_num_modes; i++ ) {
+				const uiVidMode_t *vm = &ui_vidModes[display_mode_map[i]];
+				if ( vm->width == uis.glconfig.vidWidth && vm->height == uis.glconfig.vidHeight ) {
+					sel = i;
+					break;
+				}
+			}
+		}
+		displayOptionsInfo.mode.curvalue = ( sel < 0 ) ? 0 : sel;
+	}
+	displayOptionsInfo.fs.curvalue = trap_Cvar_VariableValue( "r_fullscreen" ) != 0;
+
+	// remember the live values so the Apply button can reveal itself on change
+	displayOptionsInfo.initial_mode = displayOptionsInfo.mode.curvalue;
+	displayOptionsInfo.initial_fs   = displayOptionsInfo.fs.curvalue;
 }
 
 
@@ -250,6 +479,8 @@ void UI_DisplayOptionsMenu_Cache( void ) {
 	trap_R_RegisterShaderNoMip( ART_FRAMER );
 	trap_R_RegisterShaderNoMip( ART_BACK0 );
 	trap_R_RegisterShaderNoMip( ART_BACK1 );
+	trap_R_RegisterShaderNoMip( ART_ACCEPT0 );
+	trap_R_RegisterShaderNoMip( ART_ACCEPT1 );
 }
 
 

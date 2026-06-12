@@ -768,6 +768,9 @@ static rserr_t GLW_SetMode( const char *drivername,
 	glw_state.desktopHeight = GetDeviceCaps( hDC, VERTRES );
 	ReleaseDC( GetDesktopWindow(), hDC );
 
+	// publish the desktop-supported resolutions for the Screen menu
+	R_UpdateAvailableModes( glw_state.desktopWidth, glw_state.desktopHeight );
+
 	//
 	// verify desktop bit depth
 	//

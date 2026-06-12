@@ -246,9 +246,7 @@ static const char *s_drivers[] =
 };
 
 #define ID_BACK2		101
-#define ID_FULLSCREEN	102
 #define ID_LIST			103
-#define ID_MODE			104
 #define ID_DRIVERINFO	105
 #define ID_GRAPHICS		106
 #define ID_DISPLAY		107
@@ -268,14 +266,11 @@ typedef struct {
 	menutext_s		network;
 
 	menulist_s		list;
-	menulist_s		mode;
 	menulist_s		driver;
 	menulist_s		renderapi;
 	menulist_s		antialiasing;
 	menulist_s		dlss;
-	menulist_s		anisotropic;
 	menuslider_s	tq;
-	menulist_s  	fs;
 	menulist_s  	lighting;
 	menulist_s  	allow_extensions;
 	menulist_s  	texturebits;
@@ -290,8 +285,6 @@ typedef struct {
 
 typedef struct
 {
-	int mode;
-	qboolean fullscreen;
 	int tq;
 	int lighting;
 	int colordepth;
@@ -303,43 +296,47 @@ typedef struct
 	int renderapi;
 	int antialiasing;
 	int dlss;
-	int anisotropic;
 } InitialVideoOptions_s;
 
 static InitialVideoOptions_s	s_ivo;
 static graphicsoptions_t		s_graphicsoptions;
 
-// Antialiasing technique names.  FXAA/SSAA are Vulkan-only, so OpenGL only ever
-// offers "Off" (the menu swaps the list based on the selected Render API).
-static const char *aa_names_gl[] = { "Off", 0 };
-static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 4x", 0 };
-// DLSS is Vulkan + RTX only.  Under OpenGL the control offers only "Off".
-static const char *dlss_names_gl[] = { "Off", 0 };
+// Antialiasing technique names (FXAA/SSAA are Vulkan-only; the control is hidden
+// entirely under OpenGL by GraphicsOptions_UpdateMenuItems).
+static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 2x", "SSAA 4x", 0 };
+// DLSS is Vulkan + RTX only; likewise hidden under OpenGL.
 static const char *dlss_names_vk[] = { "Off", "Quality", "Balanced", "Performance", "Ultra Performance", 0 };
 
-// Anisotropic texture-filter levels.  Vulkan-only (the legacy GL backend does not set
-// sampler anisotropy here), so OpenGL only ever offers "Off".  The curvalue index maps
-// to the r_textureAnisotropy ratio via aniso_values[].
-static const char *aniso_names_gl[] = { "Off", 0 };
-static const char *aniso_names_vk[] = { "Off", "2x", "4x", "8x", 0 };
-static const int   aniso_values[]   = { 1, 2, 4, 8 };
+// Texture filtering.  The bilinear/trilinear mipmap modes (r_textureMode) work on both
+// backends; the anisotropic levels (r_textureAnisotropy) are Vulkan-only, so OpenGL only
+// offers Bilinear/Trilinear.  Anisotropic filtering implies trilinear mipmapping, so the
+// two former controls ("Texture Filter" + "Anisotropic Filter") are merged into a single
+// quality ladder.  The curvalue indexes filter_aniso_values[] for the r_textureAnisotropy
+// ratio (1 = none); any index >= 1 selects GL_LINEAR_MIPMAP_LINEAR (trilinear).
+static const char *filter_names_gl[] = { "Bilinear", "Trilinear", 0 };
+static const char *filter_names_vk[] = { "Bilinear", "Trilinear", "Anisotropic 2x", "Anisotropic 4x", "Anisotropic 8x", 0 };
+static const int   filter_aniso_values[] = { 1, 1, 2, 4, 8 };
 
+// Quality presets.  Fields: tq, lighting, colordepth, texturebits, geometry, filter,
+// driver, extensions (renderapi/antialiasing/dlss are left at 0 — they are not part of
+// the quality ladder).  Resolution and fullscreen now live on the Screen menu, so they
+// are no longer driven by these presets.
 static InitialVideoOptions_s s_ivo_templates[] =
 {
 	{
-		4, qtrue, 2, 0, 2, 2, 1, 1, 0, qtrue	// JDC: this was tq 3
+		2, 0, 2, 2, 1, 1, 0, qtrue	// High Quality (JDC: this was tq 3)
 	},
 	{
-		3, qtrue, 2, 0, 0, 0, 1, 0, 0, qtrue
+		2, 0, 0, 0, 1, 0, 0, qtrue	// Normal
 	},
 	{
-		2, qtrue, 1, 0, 1, 0, 0, 0, 0, qtrue
+		1, 0, 1, 0, 0, 0, 0, qtrue	// Fast
 	},
 	{
-		2, qtrue, 1, 1, 1, 0, 0, 0, 0, qtrue
+		1, 1, 1, 0, 0, 0, 0, qtrue	// Fastest
 	},
 	{
-		3, qtrue, 1, 0, 0, 0, 1, 0, 0, qtrue
+		1, 0, 0, 0, 1, 0, 0, qtrue	// Custom (fallback)
 	}
 };
 
@@ -357,9 +354,6 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
 	s_ivo.antialiasing = s_graphicsoptions.antialiasing.curvalue;
 	s_ivo.dlss = s_graphicsoptions.dlss.curvalue;
-	s_ivo.anisotropic = s_graphicsoptions.anisotropic.curvalue;
-	s_ivo.mode        = s_graphicsoptions.mode.curvalue;
-	s_ivo.fullscreen  = s_graphicsoptions.fs.curvalue;
 	s_ivo.extensions  = s_graphicsoptions.allow_extensions.curvalue;
 	s_ivo.tq          = s_graphicsoptions.tq.curvalue;
 	s_ivo.lighting    = s_graphicsoptions.lighting.curvalue;
@@ -382,10 +376,6 @@ static void GraphicsOptions_CheckConfig( void )
 		if ( s_ivo_templates[i].colordepth != s_graphicsoptions.colordepth.curvalue )
 			continue;
 		if ( s_ivo_templates[i].driver != s_graphicsoptions.driver.curvalue )
-			continue;
-		if ( s_ivo_templates[i].mode != s_graphicsoptions.mode.curvalue )
-			continue;
-		if ( s_ivo_templates[i].fullscreen != s_graphicsoptions.fs.curvalue )
 			continue;
 		if ( s_ivo_templates[i].tq != s_graphicsoptions.tq.curvalue )
 			continue;
@@ -410,20 +400,30 @@ GraphicsOptions_UpdateMenuItems
 */
 static void GraphicsOptions_UpdateMenuItems( void )
 {
-	if ( s_graphicsoptions.driver.curvalue == 1 )
+	qboolean vulkan = ( s_graphicsoptions.renderapi.curvalue != 0 );
+
+	// The legacy GL driver selector (Default/Voodoo) and the GL extension toggle only
+	// apply to the OpenGL backend; hide them entirely under Vulkan.
+	if ( vulkan )
 	{
-		s_graphicsoptions.fs.curvalue = 1;
-		s_graphicsoptions.fs.generic.flags |= QMF_GRAYED;
-		s_graphicsoptions.colordepth.curvalue = 1;
+		s_graphicsoptions.driver.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
+		s_graphicsoptions.allow_extensions.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 	}
 	else
 	{
-		s_graphicsoptions.fs.generic.flags &= ~QMF_GRAYED;
+		// restore them, unless the 3dfx ICD special case hid the driver at init time
+		if ( !( uis.glconfig.driverType == GLDRV_ICD &&
+				uis.glconfig.hardwareType == GLHW_3DFX_2D3D ) )
+		{
+			s_graphicsoptions.driver.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+		}
+		s_graphicsoptions.allow_extensions.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 
-	if ( s_graphicsoptions.fs.curvalue == 0 || s_graphicsoptions.driver.curvalue == 1 )
+	// The Voodoo (3dfx) GL driver only ever ran at a fixed 16-bit colour depth.
+	if ( !vulkan && s_graphicsoptions.driver.curvalue == 1 )
 	{
-		s_graphicsoptions.colordepth.curvalue = 0;
+		s_graphicsoptions.colordepth.curvalue = 1;
 		s_graphicsoptions.colordepth.generic.flags |= QMF_GRAYED;
 	}
 	else
@@ -431,7 +431,7 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.colordepth.generic.flags &= ~QMF_GRAYED;
 	}
 
-	if ( s_graphicsoptions.allow_extensions.curvalue == 0 )
+	if ( !vulkan && s_graphicsoptions.allow_extensions.curvalue == 0 )
 	{
 		if ( s_graphicsoptions.texturebits.curvalue == 0 )
 		{
@@ -439,49 +439,54 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		}
 	}
 
-	// FXAA/SSAA are Vulkan-only: under OpenGL the antialiasing control offers
-	// only "Off"; under Vulkan it offers Off/FXAA/SSAA.  Swap the name list (and
-	// keep numitems in sync, as SpinControl_Init does) based on the Render API.
-	if ( s_graphicsoptions.renderapi.curvalue == 0 )
+	// FXAA/SSAA and DLSS are Vulkan-only features, so hide both controls entirely under
+	// OpenGL (and force them Off) and reveal them under Vulkan.  This mirrors how the GL
+	// driver / GL extension controls are hidden under Vulkan, and updates live as soon as
+	// the Render API selection changes.
+	if ( !vulkan )
 	{
-		s_graphicsoptions.antialiasing.itemnames = aa_names_gl;
-		s_graphicsoptions.antialiasing.numitems  = 1;
-		s_graphicsoptions.antialiasing.curvalue  = 0;
-		s_graphicsoptions.dlss.itemnames = dlss_names_gl;
-		s_graphicsoptions.dlss.numitems  = 1;
-		s_graphicsoptions.dlss.curvalue  = 0;
+		s_graphicsoptions.antialiasing.curvalue = 0;
+		s_graphicsoptions.antialiasing.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
+		s_graphicsoptions.dlss.curvalue = 0;
+		s_graphicsoptions.dlss.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 	}
 	else
 	{
-		s_graphicsoptions.antialiasing.itemnames = aa_names_vk;
-		s_graphicsoptions.antialiasing.numitems  = 3;
-		s_graphicsoptions.dlss.itemnames = dlss_names_vk;
-		s_graphicsoptions.dlss.numitems  = 5;
+		s_graphicsoptions.antialiasing.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+		s_graphicsoptions.dlss.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 
-	// Anisotropic filtering is Vulkan-only too: OpenGL offers only "Off".
-	if ( s_graphicsoptions.renderapi.curvalue == 0 )
+	// The anisotropic texture-filter levels are Vulkan-only too, but plain bilinear and
+	// trilinear filtering work on both backends, so the Texture Filter control stays
+	// visible and only swaps its level list (OpenGL: Bilinear/Trilinear; Vulkan: those
+	// plus Anisotropic 2x/4x/8x).
+	if ( !vulkan )
 	{
-		s_graphicsoptions.anisotropic.itemnames = aniso_names_gl;
-		s_graphicsoptions.anisotropic.numitems  = 1;
-		s_graphicsoptions.anisotropic.curvalue  = 0;
+		s_graphicsoptions.filter.itemnames = filter_names_gl;
+		s_graphicsoptions.filter.numitems  = 2;
+		if ( s_graphicsoptions.filter.curvalue > 1 )
+			s_graphicsoptions.filter.curvalue = 1;
 	}
 	else
 	{
-		s_graphicsoptions.anisotropic.itemnames = aniso_names_vk;
-		s_graphicsoptions.anisotropic.numitems  = 4;
+		s_graphicsoptions.filter.itemnames = filter_names_vk;
+		s_graphicsoptions.filter.numitems  = 5;
+	}
+
+	// DLSS already performs its own temporal antialiasing, so the two are mutually
+	// exclusive: when DLSS is enabled, force antialiasing Off and grey out the control.
+	if ( vulkan && s_graphicsoptions.dlss.curvalue != 0 )
+	{
+		s_graphicsoptions.antialiasing.curvalue = 0;
+		s_graphicsoptions.antialiasing.generic.flags |= QMF_GRAYED;
+	}
+	else
+	{
+		s_graphicsoptions.antialiasing.generic.flags &= ~QMF_GRAYED;
 	}
 
 	s_graphicsoptions.apply.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 
-	if ( s_ivo.mode != s_graphicsoptions.mode.curvalue )
-	{
-		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
-	}
-	if ( s_ivo.fullscreen != s_graphicsoptions.fs.curvalue )
-	{
-		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
-	}
 	if ( s_ivo.extensions != s_graphicsoptions.allow_extensions.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
@@ -511,10 +516,6 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 	if ( s_ivo.dlss != s_graphicsoptions.dlss.curvalue )
-	{
-		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
-	}
-	if ( s_ivo.anisotropic != s_graphicsoptions.anisotropic.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
@@ -558,19 +559,10 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	}
 	trap_Cvar_SetValue( "r_picmip", 3 - s_graphicsoptions.tq.curvalue );
 	trap_Cvar_SetValue( "r_allowExtensions", s_graphicsoptions.allow_extensions.curvalue );
-	trap_Cvar_SetValue( "r_mode", s_graphicsoptions.mode.curvalue );
-	trap_Cvar_SetValue( "r_fullscreen", s_graphicsoptions.fs.curvalue );
 	trap_Cvar_Set( "r_glDriver", ( char * ) s_drivers[s_graphicsoptions.driver.curvalue] );
 	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
 	trap_Cvar_SetValue( "r_antialiasing", s_graphicsoptions.antialiasing.curvalue );
 	trap_Cvar_SetValue( "r_dlss", s_graphicsoptions.dlss.curvalue );
-	{
-		int aidx = s_graphicsoptions.anisotropic.curvalue;
-		if ( aidx < 0 || aidx > 3 ) {
-			aidx = 0;
-		}
-		trap_Cvar_SetValue( "r_textureAnisotropy", aniso_values[aidx] );
-	}
 	switch ( s_graphicsoptions.colordepth.curvalue )
 	{
 	case 0:
@@ -606,13 +598,18 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 		trap_Cvar_SetValue( "r_subdivisions", 20 );
 	}
 
-	if ( s_graphicsoptions.filter.curvalue )
+	// Texture filtering is a single ladder now: 0 = Bilinear, 1 = Trilinear, and 2+ =
+	// anisotropic levels (which imply trilinear mipmapping).  Drive both r_textureMode
+	// and the Vulkan-only r_textureAnisotropy ratio from the one control.
 	{
-		trap_Cvar_Set( "r_textureMode", "GL_LINEAR_MIPMAP_LINEAR" );
-	}
-	else
-	{
-		trap_Cvar_Set( "r_textureMode", "GL_LINEAR_MIPMAP_NEAREST" );
+		int fidx = s_graphicsoptions.filter.curvalue;
+		if ( fidx < 0 || fidx > 4 )
+			fidx = 0;
+		if ( fidx == 0 )
+			trap_Cvar_Set( "r_textureMode", "GL_LINEAR_MIPMAP_NEAREST" );
+		else
+			trap_Cvar_Set( "r_textureMode", "GL_LINEAR_MIPMAP_LINEAR" );
+		trap_Cvar_SetValue( "r_textureAnisotropy", filter_aniso_values[fidx] );
 	}
 
 	trap_Cmd_ExecuteText( EXEC_APPEND, "vid_restart\n" );
@@ -631,28 +628,15 @@ static void GraphicsOptions_Event( void* ptr, int event ) {
 	}
 
 	switch( ((menucommon_s*)ptr)->id ) {
-	case ID_MODE:
-		// clamp 3dfx video modes
-		if ( s_graphicsoptions.driver.curvalue == 1 )
-		{
-			if ( s_graphicsoptions.mode.curvalue < 2 )
-				s_graphicsoptions.mode.curvalue = 2;
-			else if ( s_graphicsoptions.mode.curvalue > 6 )
-				s_graphicsoptions.mode.curvalue = 6;
-		}
-		break;
-
 	case ID_LIST:
 		ivo = &s_ivo_templates[s_graphicsoptions.list.curvalue];
 
-		s_graphicsoptions.mode.curvalue        = ivo->mode;
 		s_graphicsoptions.tq.curvalue          = ivo->tq;
 		s_graphicsoptions.lighting.curvalue    = ivo->lighting;
 		s_graphicsoptions.colordepth.curvalue  = ivo->colordepth;
 		s_graphicsoptions.texturebits.curvalue = ivo->texturebits;
 		s_graphicsoptions.geometry.curvalue    = ivo->geometry;
 		s_graphicsoptions.filter.curvalue      = ivo->filter;
-		s_graphicsoptions.fs.curvalue          = ivo->fullscreen;
 		break;
 
 	case ID_DRIVERINFO:
@@ -717,15 +701,9 @@ GraphicsOptions_SetMenuItems
 */
 static void GraphicsOptions_SetMenuItems( void )
 {
-	s_graphicsoptions.mode.curvalue = trap_Cvar_VariableValue( "r_mode" );
-	if ( s_graphicsoptions.mode.curvalue < 0 )
-	{
-		s_graphicsoptions.mode.curvalue = 3;
-	}
-	s_graphicsoptions.fs.curvalue = trap_Cvar_VariableValue("r_fullscreen");
 	s_graphicsoptions.renderapi.curvalue = trap_Cvar_VariableValue("r_renderapi") != 0;
 	s_graphicsoptions.antialiasing.curvalue = trap_Cvar_VariableValue("r_antialiasing");
-	if ( s_graphicsoptions.antialiasing.curvalue < 0 || s_graphicsoptions.antialiasing.curvalue > 2
+	if ( s_graphicsoptions.antialiasing.curvalue < 0 || s_graphicsoptions.antialiasing.curvalue > 3
 		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
 		// FXAA/SSAA are Vulkan-only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.antialiasing.curvalue = 0;
@@ -735,18 +713,6 @@ static void GraphicsOptions_SetMenuItems( void )
 		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
 		// DLSS is Vulkan + RTX only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.dlss.curvalue = 0;
-	}
-	{
-		// map the r_textureAnisotropy ratio (1/2/4/8) back to a spin index
-		int aniso = (int)trap_Cvar_VariableValue( "r_textureAnisotropy" );
-		if ( aniso >= 8 )      s_graphicsoptions.anisotropic.curvalue = 3;
-		else if ( aniso >= 4 ) s_graphicsoptions.anisotropic.curvalue = 2;
-		else if ( aniso >= 2 ) s_graphicsoptions.anisotropic.curvalue = 1;
-		else                   s_graphicsoptions.anisotropic.curvalue = 0;
-		// anisotropic filtering is Vulkan-only here
-		if ( s_graphicsoptions.renderapi.curvalue == 0 ) {
-			s_graphicsoptions.anisotropic.curvalue = 0;
-		}
 	}
 	s_graphicsoptions.allow_extensions.curvalue = trap_Cvar_VariableValue("r_allowExtensions");
 	s_graphicsoptions.tq.curvalue = 3-trap_Cvar_VariableValue( "r_picmip");
@@ -774,13 +740,22 @@ static void GraphicsOptions_SetMenuItems( void )
 		break;
 	}
 
+	// Texture filtering: Bilinear (nearest mip) -> 0, otherwise it is trilinear and the
+	// r_textureAnisotropy ratio selects the level (Trilinear -> 1, 2x -> 2, 4x -> 3, 8x -> 4).
 	if ( !Q_stricmp( UI_Cvar_VariableString( "r_textureMode" ), "GL_LINEAR_MIPMAP_NEAREST" ) )
 	{
 		s_graphicsoptions.filter.curvalue = 0;
 	}
 	else
 	{
-		s_graphicsoptions.filter.curvalue = 1;
+		int aniso = (int)trap_Cvar_VariableValue( "r_textureAnisotropy" );
+		if ( aniso >= 8 )      s_graphicsoptions.filter.curvalue = 4;
+		else if ( aniso >= 4 ) s_graphicsoptions.filter.curvalue = 3;
+		else if ( aniso >= 2 ) s_graphicsoptions.filter.curvalue = 2;
+		else                   s_graphicsoptions.filter.curvalue = 1;
+		// the anisotropic levels are Vulkan-only
+		if ( s_graphicsoptions.renderapi.curvalue == 0 && s_graphicsoptions.filter.curvalue > 1 )
+			s_graphicsoptions.filter.curvalue = 1;
 	}
 
 	if ( trap_Cvar_VariableValue( "r_lodBias" ) > 0 )
@@ -813,11 +788,8 @@ static void GraphicsOptions_SetMenuItems( void )
 		break;
 	}
 
-	if ( s_graphicsoptions.fs.curvalue == 0 )
-	{
-		s_graphicsoptions.colordepth.curvalue = 0;
-	}
-	if ( s_graphicsoptions.driver.curvalue == 1 )
+	// The Voodoo (3dfx) GL driver is locked to 16-bit colour.
+	if ( s_graphicsoptions.renderapi.curvalue == 0 && s_graphicsoptions.driver.curvalue == 1 )
 	{
 		s_graphicsoptions.colordepth.curvalue = 1;
 	}
@@ -877,29 +849,6 @@ void GraphicsOptions_MenuInit( void )
 		0
 	};
 
-	static const char *resolutions[] =
-	{
-		"320x240",
-		"400x300",
-		"512x384",
-		"640x480",
-		"800x600",
-		"960x720",
-		"1024x768",
-		"1152x864",
-		"1280x1024",
-		"1600x1200",
-		"2048x1536",
-		"856x480 wide screen",
-		"1920x1080",
-		0
-	};
-	static const char *filter_names[] =
-	{
-		"Bilinear",
-		"Trilinear",
-		0
-	};
 	static const char *quality_names[] =
 	{
 		"Low",
@@ -988,7 +937,7 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
-	y = 240 - 8 * (BIGCHAR_HEIGHT + 2);
+	y = 240 - 6 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -999,15 +948,6 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.list.itemnames        = s_graphics_options_names;
 	y += 2 * ( BIGCHAR_HEIGHT + 2 );
 
-	s_graphicsoptions.driver.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.driver.generic.name  = "GL Driver:";
-	s_graphicsoptions.driver.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_graphicsoptions.driver.generic.x     = 400;
-	s_graphicsoptions.driver.generic.y     = y;
-	s_graphicsoptions.driver.itemnames     = s_driver_names;
-	s_graphicsoptions.driver.curvalue      = (uis.glconfig.driverType == GLDRV_VOODOO);
-	y += BIGCHAR_HEIGHT+2;
-
 	// references/modifies "r_renderapi" (0 = OpenGL, 1 = Vulkan)
 	s_graphicsoptions.renderapi.generic.type  = MTYPE_SPINCONTROL;
 	s_graphicsoptions.renderapi.generic.name  = "Render API:";
@@ -1017,9 +957,30 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.renderapi.itemnames     = renderapi_names;
 	y += BIGCHAR_HEIGHT+2;
 
-	// references/modifies "r_antialiasing" (0 = Off, 1 = FXAA, 2 = SSAA; Vulkan-only).
-	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
-	// GraphicsOptions_UpdateMenuItems swaps it to aa_names_gl under OpenGL.
+	// "GL Driver" sits directly under "Render API" and is hidden under Vulkan
+	// (see GraphicsOptions_UpdateMenuItems).
+	s_graphicsoptions.driver.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.driver.generic.name  = "GL Driver:";
+	s_graphicsoptions.driver.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.driver.generic.x     = 400;
+	s_graphicsoptions.driver.generic.y     = y;
+	s_graphicsoptions.driver.itemnames     = s_driver_names;
+	s_graphicsoptions.driver.curvalue      = (uis.glconfig.driverType == GLDRV_VOODOO);
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_allowExtensions" — "GL Extensions" sits directly under
+	// "GL Driver" and is likewise hidden under Vulkan.
+	s_graphicsoptions.allow_extensions.generic.type     = MTYPE_SPINCONTROL;
+	s_graphicsoptions.allow_extensions.generic.name	    = "GL Extensions:";
+	s_graphicsoptions.allow_extensions.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.allow_extensions.generic.x	    = 400;
+	s_graphicsoptions.allow_extensions.generic.y	    = y;
+	s_graphicsoptions.allow_extensions.itemnames        = enabled_names;
+	y -= BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_antialiasing" (0 = Off, 1 = FXAA, 2 = SSAA 2x, 3 = SSAA 4x;
+	// Vulkan-only, hidden under OpenGL).  Initialised with the Vulkan list so
+	// SpinControl_Init sizes for the longest label.
 	s_graphicsoptions.antialiasing.generic.type  = MTYPE_SPINCONTROL;
 	s_graphicsoptions.antialiasing.generic.name  = "Antialiasing:";
 	s_graphicsoptions.antialiasing.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -1029,46 +990,15 @@ void GraphicsOptions_MenuInit( void )
 	y += BIGCHAR_HEIGHT+2;
 
 	// references/modifies "r_dlss" (0 = Off, 1 = Quality, 2 = Balanced,
-	// 3 = Performance, 4 = Ultra Performance; Vulkan + RTX only).  Initialised with
-	// the Vulkan list so SpinControl_Init sizes for the longest label.
+	// 3 = Performance, 4 = Ultra Performance; Vulkan + RTX only, hidden under OpenGL).
+	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label.
 	s_graphicsoptions.dlss.generic.type  = MTYPE_SPINCONTROL;
 	s_graphicsoptions.dlss.generic.name  = "NVIDIA DLSS:";
 	s_graphicsoptions.dlss.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.dlss.generic.x     = 400;
 	s_graphicsoptions.dlss.generic.y     = y;
 	s_graphicsoptions.dlss.itemnames     = dlss_names_vk;
-	y += BIGCHAR_HEIGHT+2;
-
-	// references/modifies "r_textureAnisotropy" (1 = Off, 2/4/8 = ratio; Vulkan-only).
-	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
-	// GraphicsOptions_UpdateMenuItems swaps it to aniso_names_gl under OpenGL.
-	s_graphicsoptions.anisotropic.generic.type  = MTYPE_SPINCONTROL;
-	s_graphicsoptions.anisotropic.generic.name  = "Anisotropic Filter:";
-	s_graphicsoptions.anisotropic.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_graphicsoptions.anisotropic.generic.x     = 400;
-	s_graphicsoptions.anisotropic.generic.y     = y;
-	s_graphicsoptions.anisotropic.itemnames     = aniso_names_vk;
-	y += BIGCHAR_HEIGHT+2;
-
-	// references/modifies "r_allowExtensions"
-	s_graphicsoptions.allow_extensions.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.allow_extensions.generic.name	    = "GL Extensions:";
-	s_graphicsoptions.allow_extensions.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_graphicsoptions.allow_extensions.generic.x	    = 400;
-	s_graphicsoptions.allow_extensions.generic.y	    = y;
-	s_graphicsoptions.allow_extensions.itemnames        = enabled_names;
-	y += BIGCHAR_HEIGHT+2;
-
-	// references/modifies "r_mode"
-	s_graphicsoptions.mode.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.mode.generic.name     = "Video Mode:";
-	s_graphicsoptions.mode.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_graphicsoptions.mode.generic.x        = 400;
-	s_graphicsoptions.mode.generic.y        = y;
-	s_graphicsoptions.mode.itemnames        = resolutions;
-	s_graphicsoptions.mode.generic.callback = GraphicsOptions_Event;
-	s_graphicsoptions.mode.generic.id       = ID_MODE;
-	y += BIGCHAR_HEIGHT+2;
+	y += 2 * ( BIGCHAR_HEIGHT+2 );
 
 	// references "r_colorbits"
 	s_graphicsoptions.colordepth.generic.type     = MTYPE_SPINCONTROL;
@@ -1077,15 +1007,6 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.colordepth.generic.x        = 400;
 	s_graphicsoptions.colordepth.generic.y        = y;
 	s_graphicsoptions.colordepth.itemnames        = colordepth_names;
-	y += BIGCHAR_HEIGHT+2;
-
-	// references/modifies "r_fullscreen"
-	s_graphicsoptions.fs.generic.type     = MTYPE_SPINCONTROL;
-	s_graphicsoptions.fs.generic.name	  = "Fullscreen:";
-	s_graphicsoptions.fs.generic.flags	  = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_graphicsoptions.fs.generic.x	      = 400;
-	s_graphicsoptions.fs.generic.y	      = y;
-	s_graphicsoptions.fs.itemnames	      = enabled_names;
 	y += BIGCHAR_HEIGHT+2;
 
 	// references/modifies "r_vertexLight"
@@ -1126,13 +1047,15 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.texturebits.itemnames     = tq_names;
 	y += BIGCHAR_HEIGHT+2;
 
-	// references/modifies "r_textureMode"
+	// references/modifies "r_textureMode" + "r_textureAnisotropy" (unified filter ladder).
+	// Initialised with the Vulkan list so SpinControl_Init sizes for the longest label;
+	// GraphicsOptions_UpdateMenuItems swaps it to filter_names_gl under OpenGL.
 	s_graphicsoptions.filter.generic.type   = MTYPE_SPINCONTROL;
 	s_graphicsoptions.filter.generic.name	= "Texture Filter:";
 	s_graphicsoptions.filter.generic.flags	= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_graphicsoptions.filter.generic.x	    = 400;
 	s_graphicsoptions.filter.generic.y	    = y;
-	s_graphicsoptions.filter.itemnames      = filter_names;
+	s_graphicsoptions.filter.itemnames      = filter_names_vk;
 	y += 2*BIGCHAR_HEIGHT;
 
 	s_graphicsoptions.driverinfo.generic.type     = MTYPE_PTEXT;
@@ -1177,15 +1100,12 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.network );
 
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.list );
-	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.renderapi );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driver );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.antialiasing );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.dlss );
-	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.anisotropic );
-	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
-	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.mode );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.colordepth );
-	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.fs );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.lighting );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.geometry );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.tq );

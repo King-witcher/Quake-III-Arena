@@ -1021,7 +1021,7 @@ extern	cvar_t	*r_nocurves;
 extern	cvar_t	*r_showcluster;
 
 extern cvar_t	*r_renderapi;			// 0 = OpenGL (default), 1 = Vulkan; latched, applied on vid_restart
-extern cvar_t	*r_antialiasing;		// 0 = Off, 1 = FXAA, 2 = SSAA; Vulkan-only; latched
+extern cvar_t	*r_antialiasing;		// 0 = Off, 1 = FXAA, 2 = SSAA 2x, 3 = SSAA 4x; Vulkan-only; latched
 extern cvar_t	*r_textureAnisotropy;	// 1 = Off, 2/4/8 = anisotropic ratio; Vulkan-only; latched
 extern cvar_t	*r_dlss;				// 0 = Off, 1 = Quality, 2 = Balanced, 3 = Performance, 4 = Ultra Perf; Vulkan-only; latched
 extern cvar_t	*r_mode;				// video mode
@@ -1193,6 +1193,7 @@ image_t		*R_FindImageFile( const char *name, qboolean mipmap, qboolean allowPicm
 image_t		*R_CreateImage( const char *name, const byte *pic, int width, int height, qboolean mipmap
 					, qboolean allowPicmip, int wrapClampMode );
 qboolean	R_GetModeInfo( int *width, int *height, float *windowAspect, int mode );
+void		R_UpdateAvailableModes( int desktopWidth, int desktopHeight );
 
 void		R_SetColorMappings( void );
 void		R_GammaCorrect( byte *buffer, int bufSize );
