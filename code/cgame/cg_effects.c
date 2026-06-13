@@ -610,83 +610,60 @@ CG_GibPlayer
 Generated a bunch of gibs launching out from the bodies location
 ===================
 */
-#define	GIB_VELOCITY	250
-#define	GIB_JUMP		250
-void CG_GibPlayer( vec3_t playerOrigin ) {
-	vec3_t	origin, velocity;
+#define	GIB_VELOCITY	200
+#define	GIB_JUMP		75
+
+/*
+==================
+CG_LaunchGibModel
+
+Launch a single gib model with a randomized velocity scaled by velScale.
+==================
+*/
+static void CG_LaunchGibModel( vec3_t origin, qhandle_t hModel, float velScale ) {
+	vec3_t	velocity;
+
+	velocity[0] = crandom() * GIB_VELOCITY * velScale;
+	velocity[1] = crandom() * GIB_VELOCITY * velScale;
+	velocity[2] = ( GIB_JUMP + crandom() * GIB_VELOCITY ) * velScale;
+	CG_LaunchGib( origin, velocity, hModel );
+}
+
+void CG_GibPlayer( vec3_t playerOrigin, int intensity ) {
+	float	velScale = (float)intensity;
+	int count = 1;
 
 	if ( !cg_blood.integer ) {
 		return;
 	}
 
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	if ( rand() & 1 ) {
-		CG_LaunchGib( origin, velocity, cgs.media.gibSkull );
-	} else {
-		CG_LaunchGib( origin, velocity, cgs.media.gibBrain );
+	for ( int n = 0; n < count; n++ ) {
+		if ( rand() & 1 ) {
+			CG_LaunchGibModel( playerOrigin, cgs.media.gibSkull, velScale );
+		} else {
+			CG_LaunchGibModel( playerOrigin, cgs.media.gibBrain, velScale );
+		}
+
+		// allow gibs to be turned off for speed
+		if ( !cg_gibs.integer ) {
+			continue;
+		}
+
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibAbdomen, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibAbdomen, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibArm, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibChest, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibChest, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibChest, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibFist, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibFoot, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibForearm, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibIntestine, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibLeg, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibLeg, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibLeg, velScale );
+		CG_LaunchGibModel( playerOrigin, cgs.media.gibLeg, velScale );
 	}
-
-	// allow gibs to be turned off for speed
-	if ( !cg_gibs.integer ) {
-		return;
-	}
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibAbdomen );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibArm );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibChest );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibFist );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibFoot );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibForearm );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibIntestine );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibLeg );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibLeg );
 }
 
 /*

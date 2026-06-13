@@ -1147,7 +1147,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		if ( !(es->eFlags & EF_KAMIKAZE) ) {
 			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
 		}
-		CG_GibPlayer( cent->lerpOrigin );
+		CG_GibPlayer( cent->lerpOrigin, es->eventParm );
 		break;
 
 	case EV_STOPLOOPINGSOUND:
