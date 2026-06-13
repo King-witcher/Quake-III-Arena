@@ -771,6 +771,58 @@ extern	vmCvar_t	g_enableBreath;
 extern	vmCvar_t	g_singlePlayer;
 extern	vmCvar_t	g_proxMineTimeout;
 
+// Quake-Live style tunable weapons: per-weapon damage / fire interval / projectile
+// velocity / splash damage / splash radius, all cvar driven. Defaults match vanilla.
+extern	vmCvar_t	weapon_reload_g;		// gauntlet
+extern	vmCvar_t	weapon_reload_mg;		// machinegun
+extern	vmCvar_t	weapon_reload_sg;		// shotgun
+extern	vmCvar_t	weapon_reload_gl;		// grenade launcher
+extern	vmCvar_t	weapon_reload_rl;		// rocket launcher
+extern	vmCvar_t	weapon_reload_lg;		// lightning gun
+extern	vmCvar_t	weapon_reload_rg;		// railgun
+extern	vmCvar_t	weapon_reload_pg;		// plasma gun
+extern	vmCvar_t	weapon_reload_bfg;		// bfg
+extern	vmCvar_t	weapon_reload_gh;		// grappling hook
+extern	vmCvar_t	weapon_reload_ng;		// nailgun (mission pack)
+extern	vmCvar_t	weapon_reload_pl;		// prox launcher (mission pack)
+extern	vmCvar_t	weapon_reload_cg;		// chaingun (mission pack)
+
+extern	vmCvar_t	g_damage_g;
+extern	vmCvar_t	g_damage_mg;
+extern	vmCvar_t	g_damage_mg_team;		// machinegun does less damage in team games
+extern	vmCvar_t	g_damage_sg;			// per-pellet
+extern	vmCvar_t	g_damage_gl;
+extern	vmCvar_t	g_damage_rl;
+extern	vmCvar_t	g_damage_lg;
+extern	vmCvar_t	g_damage_rg;
+extern	vmCvar_t	g_damage_pg;
+extern	vmCvar_t	g_damage_bfg;
+extern	vmCvar_t	g_damage_ng;			// nailgun (mission pack)
+extern	vmCvar_t	g_damage_cg;			// chaingun (mission pack)
+
+extern	vmCvar_t	g_splashdamage_gl;
+extern	vmCvar_t	g_splashdamage_rl;
+extern	vmCvar_t	g_splashdamage_pg;
+extern	vmCvar_t	g_splashdamage_bfg;
+extern	vmCvar_t	g_splashdamage_pl;		// prox launcher (mission pack)
+
+extern	vmCvar_t	g_splashradius_gl;
+extern	vmCvar_t	g_splashradius_rl;
+extern	vmCvar_t	g_splashradius_pg;
+extern	vmCvar_t	g_splashradius_bfg;
+extern	vmCvar_t	g_splashradius_pl;		// prox launcher (mission pack)
+
+extern	vmCvar_t	g_velocity_gl;
+extern	vmCvar_t	g_velocity_rl;
+extern	vmCvar_t	g_velocity_pg;
+extern	vmCvar_t	g_velocity_bfg;
+extern	vmCvar_t	g_velocity_ng;			// nailgun base speed (mission pack)
+extern	vmCvar_t	g_velocity_pl;			// prox launcher (mission pack)
+
+// weapon tuning helpers (g_main.c)
+void	G_WeaponFireTimes( int *times );	// fill times[MAX_WEAPONS] from the reload cvars
+void	G_UpdateWeaponConfig( void );		// (re)build the CS_WEAPON_RELOAD config string
+
 void	trap_Printf( const char *fmt );
 void	trap_Error( const char *fmt );
 int		trap_Milliseconds( void );

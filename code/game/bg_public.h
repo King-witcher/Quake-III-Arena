@@ -79,6 +79,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define CS_FLAGSTATUS			23		// string indicating flag status in CTF
 #define CS_SHADERSTATE			24
 #define CS_BOTINFO				25
+#define	CS_WEAPON_RELOAD		26		// space-separated per-weapon fire intervals (ms), indexed by WP_*; used for client prediction
 
 #define	CS_ITEMS				27		// string of 0's and 1's that tell which items are present
 
@@ -167,6 +168,11 @@ typedef struct {
 	int			debugLevel;			// if set, diagnostic output will be printed
 	qboolean	noFootsteps;		// if the game is setup for no footsteps by the server
 	qboolean	gauntletHit;		// true if a gauntlet attack would actually hit something
+
+	// per-weapon fire interval (ms), indexed by WP_*; filled by game (from cvars) and
+	// cgame (from CS_WEAPON_RELOAD) so client prediction matches the server cadence.
+	// a value <= 0 means "use the built-in default" (see PM_Weapon).
+	int			weaponFireTime[MAX_WEAPONS];
 
 	int			framecount;
 

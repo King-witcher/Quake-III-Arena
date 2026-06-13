@@ -411,6 +411,41 @@ We detect prediction errors and allow them to be decayed off over several frames
 to ease the jerk.
 =================
 */
+
+/*
+=================
+CG_SetWeaponFireTimes
+
+Load the per-weapon fire intervals (ms) the server published in CS_WEAPON_RELOAD
+into cg_pmove, so client-side weapon prediction uses the same cadence as the
+server (QL-style weapon_reload_* cvars). A short/missing string or a 0 entry
+leaves PM_Weapon to use its built-in default for that weapon.
+=================
+*/
+static void CG_SetWeaponFireTimes( void ) {
+	const char	*s;
+	int			w;
+
+	for ( w = 0; w < MAX_WEAPONS; w++ ) {
+		cg_pmove.weaponFireTime[w] = 0;
+	}
+
+	s = CG_ConfigString( CS_WEAPON_RELOAD );
+	if ( !s || !s[0] ) {
+		return;
+	}
+
+	for ( w = 0; w < WP_NUM_WEAPONS && *s; w++ ) {
+		cg_pmove.weaponFireTime[w] = atoi( s );
+		while ( *s && *s != ' ' ) {
+			s++;	// skip this value
+		}
+		while ( *s == ' ' ) {
+			s++;	// skip separators
+		}
+	}
+}
+
 void CG_PredictPlayerState( void ) {
 	int			cmdNum, current;
 	playerState_t	oldPlayerState;
@@ -455,6 +490,10 @@ void CG_PredictPlayerState( void ) {
 		cg_pmove.tracemask &= ~CONTENTS_BODY;	// spectators can fly through bodies
 	}
 	cg_pmove.noFootsteps = ( cgs.dmflags & DF_NO_FOOTSTEPS ) > 0;
+
+	// cvar-driven per-weapon fire intervals, published by the server in
+	// CS_WEAPON_RELOAD, so firing prediction matches the server cadence
+	CG_SetWeaponFireTimes();
 
 	// save the state before the pmove so we can detect transitions
 	oldPlayerState = cg.predictedPlayerState;

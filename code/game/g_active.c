@@ -921,6 +921,10 @@ void ClientThink_real( gentity_t *ent ) {
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
 	pm.pmove_msec = pmove_msec.integer;
 
+	// cvar-driven per-weapon fire intervals (must match client prediction, which
+	// reads the same values from the CS_WEAPON_RELOAD config string)
+	G_WeaponFireTimes( pm.weaponFireTime );
+
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
 #ifdef MISSIONPACK

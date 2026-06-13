@@ -632,12 +632,13 @@ static void CG_LaunchGibModel( vec3_t origin, qhandle_t hModel, float velScale )
 void CG_GibPlayer( vec3_t playerOrigin, int intensity ) {
 	float	velScale = (float)intensity;
 	int count = 1;
+	int n;
 
 	if ( !cg_blood.integer ) {
 		return;
 	}
 
-	for ( int n = 0; n < count; n++ ) {
+	for ( n = 0; n < count; n++ ) {
 		if ( rand() & 1 ) {
 			CG_LaunchGibModel( playerOrigin, cgs.media.gibSkull, velScale );
 		} else {

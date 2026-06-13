@@ -81,6 +81,51 @@ vmCvar_t	pmove_fixed;
 vmCvar_t	pmove_msec;
 vmCvar_t	g_rankings;
 vmCvar_t	g_listEntity;
+
+// Quake-Live style tunable weapons
+vmCvar_t	weapon_reload_g;
+vmCvar_t	weapon_reload_mg;
+vmCvar_t	weapon_reload_sg;
+vmCvar_t	weapon_reload_gl;
+vmCvar_t	weapon_reload_rl;
+vmCvar_t	weapon_reload_lg;
+vmCvar_t	weapon_reload_rg;
+vmCvar_t	weapon_reload_pg;
+vmCvar_t	weapon_reload_bfg;
+vmCvar_t	weapon_reload_gh;
+vmCvar_t	g_damage_g;
+vmCvar_t	g_damage_mg;
+vmCvar_t	g_damage_mg_team;
+vmCvar_t	g_damage_sg;
+vmCvar_t	g_damage_gl;
+vmCvar_t	g_damage_rl;
+vmCvar_t	g_damage_lg;
+vmCvar_t	g_damage_rg;
+vmCvar_t	g_damage_pg;
+vmCvar_t	g_damage_bfg;
+vmCvar_t	g_splashdamage_gl;
+vmCvar_t	g_splashdamage_rl;
+vmCvar_t	g_splashdamage_pg;
+vmCvar_t	g_splashdamage_bfg;
+vmCvar_t	g_splashradius_gl;
+vmCvar_t	g_splashradius_rl;
+vmCvar_t	g_splashradius_pg;
+vmCvar_t	g_splashradius_bfg;
+vmCvar_t	g_velocity_gl;
+vmCvar_t	g_velocity_rl;
+vmCvar_t	g_velocity_pg;
+vmCvar_t	g_velocity_bfg;
+#ifdef MISSIONPACK
+vmCvar_t	weapon_reload_ng;
+vmCvar_t	weapon_reload_pl;
+vmCvar_t	weapon_reload_cg;
+vmCvar_t	g_damage_ng;
+vmCvar_t	g_damage_cg;
+vmCvar_t	g_splashdamage_pl;
+vmCvar_t	g_splashradius_pl;
+vmCvar_t	g_velocity_ng;
+vmCvar_t	g_velocity_pl;
+#endif
 #ifdef MISSIONPACK
 vmCvar_t	g_obeliskHealth;
 vmCvar_t	g_obeliskRegenPeriod;
@@ -178,7 +223,54 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &pmove_fixed, "pmove_fixed", "0", CVAR_SYSTEMINFO, 0, qfalse},
 	{ &pmove_msec, "pmove_msec", "8", CVAR_SYSTEMINFO, 0, qfalse},
 
-	{ &g_rankings, "g_rankings", "0", 0, 0, qfalse}
+	{ &g_rankings, "g_rankings", "0", 0, 0, qfalse},
+
+	// Quake-Live style tunable weapons (defaults match vanilla Q3A).
+	// trackChange=qfalse: don't spam every client a "changed to" print when an
+	// admin retunes (the CS_WEAPON_RELOAD sync is independent of this flag).
+	{ &weapon_reload_g, "weapon_reload_g", "400", 0, 0, qfalse },
+	{ &weapon_reload_mg, "weapon_reload_mg", "100", 0, 0, qfalse },
+	{ &weapon_reload_sg, "weapon_reload_sg", "1000", 0, 0, qfalse },
+	{ &weapon_reload_gl, "weapon_reload_gl", "800", 0, 0, qfalse },
+	{ &weapon_reload_rl, "weapon_reload_rl", "800", 0, 0, qfalse },
+	{ &weapon_reload_lg, "weapon_reload_lg", "50", 0, 0, qfalse },
+	{ &weapon_reload_rg, "weapon_reload_rg", "1500", 0, 0, qfalse },
+	{ &weapon_reload_pg, "weapon_reload_pg", "100", 0, 0, qfalse },
+	{ &weapon_reload_bfg, "weapon_reload_bfg", "200", 0, 0, qfalse },
+	{ &weapon_reload_gh, "weapon_reload_gh", "400", 0, 0, qfalse },
+	{ &g_damage_g, "g_damage_g", "50", 0, 0, qfalse },
+	{ &g_damage_mg, "g_damage_mg", "7", 0, 0, qfalse },
+	{ &g_damage_mg_team, "g_damage_mg_team", "5", 0, 0, qfalse },
+	{ &g_damage_sg, "g_damage_sg", "10", 0, 0, qfalse },
+	{ &g_damage_gl, "g_damage_gl", "100", 0, 0, qfalse },
+	{ &g_damage_rl, "g_damage_rl", "100", 0, 0, qfalse },
+	{ &g_damage_lg, "g_damage_lg", "8", 0, 0, qfalse },
+	{ &g_damage_rg, "g_damage_rg", "100", 0, 0, qfalse },
+	{ &g_damage_pg, "g_damage_pg", "20", 0, 0, qfalse },
+	{ &g_damage_bfg, "g_damage_bfg", "100", 0, 0, qfalse },
+	{ &g_splashdamage_gl, "g_splashdamage_gl", "100", 0, 0, qfalse },
+	{ &g_splashdamage_rl, "g_splashdamage_rl", "100", 0, 0, qfalse },
+	{ &g_splashdamage_pg, "g_splashdamage_pg", "15", 0, 0, qfalse },
+	{ &g_splashdamage_bfg, "g_splashdamage_bfg", "100", 0, 0, qfalse },
+	{ &g_splashradius_gl, "g_splashradius_gl", "150", 0, 0, qfalse },
+	{ &g_splashradius_rl, "g_splashradius_rl", "120", 0, 0, qfalse },
+	{ &g_splashradius_pg, "g_splashradius_pg", "20", 0, 0, qfalse },
+	{ &g_splashradius_bfg, "g_splashradius_bfg", "120", 0, 0, qfalse },
+	{ &g_velocity_gl, "g_velocity_gl", "700", 0, 0, qfalse },
+	{ &g_velocity_rl, "g_velocity_rl", "900", 0, 0, qfalse },
+	{ &g_velocity_pg, "g_velocity_pg", "2000", 0, 0, qfalse },
+	{ &g_velocity_bfg, "g_velocity_bfg", "2000", 0, 0, qfalse },
+#ifdef MISSIONPACK
+	{ &weapon_reload_ng, "weapon_reload_ng", "1000", 0, 0, qfalse },
+	{ &weapon_reload_pl, "weapon_reload_pl", "800", 0, 0, qfalse },
+	{ &weapon_reload_cg, "weapon_reload_cg", "30", 0, 0, qfalse },
+	{ &g_damage_ng, "g_damage_ng", "20", 0, 0, qfalse },
+	{ &g_damage_cg, "g_damage_cg", "7", 0, 0, qfalse },
+	{ &g_splashdamage_pl, "g_splashdamage_pl", "100", 0, 0, qfalse },
+	{ &g_splashradius_pl, "g_splashradius_pl", "150", 0, 0, qfalse },
+	{ &g_velocity_ng, "g_velocity_ng", "555", 0, 0, qfalse },
+	{ &g_velocity_pl, "g_velocity_pl", "700", 0, 0, qfalse }
+#endif
 
 };
 
@@ -397,6 +489,73 @@ void G_UpdateCvars( void ) {
 	if (remapped) {
 		G_RemapTeamShaders();
 	}
+
+	// keep the client-side fire-rate config string in sync with the reload cvars
+	// (self-throttles: only re-sends when a value actually changed)
+	G_UpdateWeaponConfig();
+}
+
+/*
+=================
+G_WeaponFireTimes
+
+Fill times[MAX_WEAPONS] with the per-weapon fire interval (ms), indexed by WP_*,
+from the weapon_reload_* cvars. Shared by the server pmove fill and the config
+string builder so there is a single source of truth.
+=================
+*/
+void G_WeaponFireTimes( int *times ) {
+	int		i;
+
+	for ( i = 0; i < MAX_WEAPONS; i++ ) {
+		times[i] = 0;
+	}
+
+	times[WP_GAUNTLET]			= weapon_reload_g.integer;
+	times[WP_MACHINEGUN]		= weapon_reload_mg.integer;
+	times[WP_SHOTGUN]			= weapon_reload_sg.integer;
+	times[WP_GRENADE_LAUNCHER]	= weapon_reload_gl.integer;
+	times[WP_ROCKET_LAUNCHER]	= weapon_reload_rl.integer;
+	times[WP_LIGHTNING]			= weapon_reload_lg.integer;
+	times[WP_RAILGUN]			= weapon_reload_rg.integer;
+	times[WP_PLASMAGUN]			= weapon_reload_pg.integer;
+	times[WP_BFG]				= weapon_reload_bfg.integer;
+	times[WP_GRAPPLING_HOOK]	= weapon_reload_gh.integer;
+#ifdef MISSIONPACK
+	times[WP_NAILGUN]			= weapon_reload_ng.integer;
+	times[WP_PROX_LAUNCHER]		= weapon_reload_pl.integer;
+	times[WP_CHAINGUN]			= weapon_reload_cg.integer;
+#endif
+}
+
+/*
+=================
+G_UpdateWeaponConfig
+
+(Re)build the CS_WEAPON_RELOAD config string from the reload cvars so clients can
+predict the firing cadence. Only updates the config string when it actually
+changes to avoid needless network traffic.
+=================
+*/
+void G_UpdateWeaponConfig( void ) {
+	char		buf[MAX_INFO_STRING];
+	char		current[MAX_INFO_STRING];
+	int			times[MAX_WEAPONS];
+	int			i;
+
+	G_WeaponFireTimes( times );
+
+	buf[0] = '\0';
+	for ( i = 0; i < WP_NUM_WEAPONS; i++ ) {
+		Q_strcat( buf, sizeof( buf ), va( "%i ", times[i] ) );
+	}
+
+	// compare against the live config string so a map change (which clears config
+	// strings) is detected and the value is re-sent.
+	trap_GetConfigstring( CS_WEAPON_RELOAD, current, sizeof( current ) );
+	if ( strcmp( buf, current ) ) {
+		trap_SetConfigstring( CS_WEAPON_RELOAD, buf );
+	}
 }
 
 /*
@@ -415,6 +574,9 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	srand( randomSeed );
 
 	G_RegisterCvars();
+
+	// publish per-weapon fire intervals for client prediction
+	G_UpdateWeaponConfig();
 
 	G_ProcessIPBans();
 

@@ -1685,6 +1685,15 @@ static void PM_Weapon( void ) {
 #endif
 	}
 
+	// cvar-driven fire interval (QL-style weapon_reload_*). The game fills
+	// pm->weaponFireTime from cvars and the cgame from the CS_WEAPON_RELOAD config
+	// string, so both sides predict the same cadence. A value <= 0 means "not set",
+	// in which case the built-in default chosen above is used.
+	if ( pm->ps->weapon > WP_NONE && pm->ps->weapon < WP_NUM_WEAPONS
+		&& pm->weaponFireTime[pm->ps->weapon] > 0 ) {
+		addTime = pm->weaponFireTime[pm->ps->weapon];
+	}
+
 #ifdef MISSIONPACK
 	if( bg_itemlist[pm->ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT ) {
 		addTime /= 1.5;
