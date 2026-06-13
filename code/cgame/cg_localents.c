@@ -839,21 +839,14 @@ a damage number, shared by the 3D-sprite and 2D-text renderers.
 ===================
 */
 static void CG_DamagePlumPosition( localEntity_t *le, vec3_t origin, float *alpha ) {
-	float	c;
-	float ageSecs;
-
-	c = ( le->endTime - cg.time ) * le->lifeRate;	// 1 at spawn -> 0 at death
+	float lifespanRatio = ( cg.time - le->startTime ) * le->lifeRate;
 
 	VectorCopy( le->pos.trBase, origin );
-	// float upward at ~50 u/s so rapid hits (e.g. a lightning gun stream)
-	// spread out vertically into separate, readable numbers
-	ageSecs = ( cg.time - le->startTime ) / 1000.0f;
-	origin[2] += ( 2.0f * ageSecs - 3.0f * ageSecs * ageSecs ) * 50.0f;
-	// origin[2] += ageSecs * 50.0f;
+	origin[2] += ( 2.0f * lifespanRatio - 3.0f * lifespanRatio * lifespanRatio ) * 30.0f;
 
 
-	if ( c < 0.67f ) {
-		*alpha = c / 0.67f;							// fade out near the end
+	if ( lifespanRatio > 0.333f ) {
+		*alpha = (1.0f - lifespanRatio) / 0.667f;							// fade out near the end
 	} else {
 		*alpha = 1.0f;
 	}
