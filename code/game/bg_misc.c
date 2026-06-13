@@ -1013,12 +1013,18 @@ qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTim
 
 	BG_EvaluateTrajectory( &item->pos, atTime, origin );
 
-	// we are ignoring ducked differences here
+	// we are ignoring ducked differences here.
+	// The vertical "up" range is intentionally larger than the rest: an item
+	// rests with its center ~15u above the floor, while a standard jump
+	// (JUMP_VELOCITY 270) lifts the player origin ~46u, so the old +36 limit
+	// let you hop clean over an item without grabbing it. Allow up to +60,
+	// which covers the apex of a normal jump and still stays inside the
+	// server's entity-query range (~67u) so the item is always considered.
 	if ( ps->origin[0] - origin[0] > 44
 		|| ps->origin[0] - origin[0] < -50
 		|| ps->origin[1] - origin[1] > 36
 		|| ps->origin[1] - origin[1] < -36
-		|| ps->origin[2] - origin[2] > 36
+		|| ps->origin[2] - origin[2] > 60
 		|| ps->origin[2] - origin[2] < -36 ) {
 		return qfalse;
 	}

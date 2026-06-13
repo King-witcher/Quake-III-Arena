@@ -54,6 +54,7 @@ static float DLSS_ModeRatio( vkDlssMode_t mode ) {
 		case VK_DLSS_BALANCED:		return 1.724f;
 		case VK_DLSS_PERFORMANCE:	return 2.0f;
 		case VK_DLSS_ULTRA_PERF:	return 3.0f;
+		case VK_DLSS_DLAA:			return 1.0f;	// native res -- pure AA, no upscale
 		default:					return 1.0f;	// Off
 	}
 }
@@ -64,6 +65,7 @@ const char *VK_DLSS_ModeName( int mode ) {
 		case VK_DLSS_BALANCED:		return "Balanced";
 		case VK_DLSS_PERFORMANCE:	return "Performance";
 		case VK_DLSS_ULTRA_PERF:	return "Ultra Performance";
+		case VK_DLSS_DLAA:			return "DLAA";
 		default:					return "Off";
 	}
 }
@@ -110,7 +112,7 @@ qboolean VK_DLSS_RenderResolution( vkDlssMode_t mode, uint32_t outW, uint32_t ou
 								   uint32_t *renderW, uint32_t *renderH ) {
 	float ratio;
 
-	if ( mode <= VK_DLSS_OFF || mode > VK_DLSS_ULTRA_PERF ) {
+	if ( mode <= VK_DLSS_OFF || mode > VK_DLSS_DLAA ) {
 		return qfalse;
 	}
 
@@ -223,6 +225,7 @@ static NVSDK_NGX_PerfQuality_Value DLSS_PerfValue( vkDlssMode_t mode ) {
 		case VK_DLSS_BALANCED:		return NVSDK_NGX_PerfQuality_Value_Balanced;
 		case VK_DLSS_PERFORMANCE:	return NVSDK_NGX_PerfQuality_Value_MaxPerf;
 		case VK_DLSS_ULTRA_PERF:	return NVSDK_NGX_PerfQuality_Value_UltraPerformance;
+		case VK_DLSS_DLAA:			return NVSDK_NGX_PerfQuality_Value_DLAA;
 		default:					return NVSDK_NGX_PerfQuality_Value_MaxQuality;
 	}
 }

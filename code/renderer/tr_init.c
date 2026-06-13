@@ -986,9 +986,10 @@ void R_Register( void )
 	// latched, applied on the next vid_restart like r_antialiasing.
 	r_textureAnisotropy = ri.Cvar_Get( "r_textureAnisotropy", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	// NVIDIA DLSS upscaling.  0 = Off, 1 = Quality, 2 = Balanced, 3 = Performance,
-	// 4 = Ultra Performance.  Vulkan-only and only effective on an RTX GPU with the
-	// NGX runtime present (see renderer/nvsdk_ngx/DLSS_VULKAN_REFERENCE.md); otherwise
-	// it transparently falls back to a plain upscale.  Latched like r_antialiasing.
+	// 4 = Ultra Performance, 5 = DLAA (native-res antialiasing, no upscale).  Vulkan-only
+	// and only effective on an RTX GPU with the NGX runtime present (see
+	// renderer/nvsdk_ngx/DLSS_VULKAN_REFERENCE.md); otherwise it transparently falls back
+	// to a plain upscale (DLAA resolves with a native-res FXAA pass).  Latched like r_antialiasing.
 	r_dlss = ri.Cvar_Get( "r_dlss", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );

@@ -41,7 +41,8 @@ typedef enum {
 	VK_DLSS_QUALITY		= 1,	// render = display / 1.5
 	VK_DLSS_BALANCED	= 2,	// render = display / 1.724
 	VK_DLSS_PERFORMANCE	= 3,	// render = display / 2.0
-	VK_DLSS_ULTRA_PERF	= 4		// render = display / 3.0
+	VK_DLSS_ULTRA_PERF	= 4,	// render = display / 3.0
+	VK_DLSS_DLAA		= 5		// render = display (native res; pure AA, no upscale)
 } vkDlssMode_t;
 
 // Extension discovery -- must run BEFORE the VkInstance / VkDevice is created.

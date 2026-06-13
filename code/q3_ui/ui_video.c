@@ -305,7 +305,7 @@ static graphicsoptions_t		s_graphicsoptions;
 // entirely under OpenGL by GraphicsOptions_UpdateMenuItems).
 static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 2x", "SSAA 4x", 0 };
 // DLSS is Vulkan + RTX only; likewise hidden under OpenGL.
-static const char *dlss_names_vk[] = { "Off", "Quality", "Balanced", "Performance", "Ultra Performance", 0 };
+static const char *dlss_names_vk[] = { "Off", "Quality", "Balanced", "Performance", "Ultra Performance", "DLAA", 0 };
 
 // Texture filtering.  The bilinear/trilinear mipmap modes (r_textureMode) work on both
 // backends; the anisotropic levels (r_textureAnisotropy) are Vulkan-only, so OpenGL only
@@ -709,7 +709,7 @@ static void GraphicsOptions_SetMenuItems( void )
 		s_graphicsoptions.antialiasing.curvalue = 0;
 	}
 	s_graphicsoptions.dlss.curvalue = trap_Cvar_VariableValue("r_dlss");
-	if ( s_graphicsoptions.dlss.curvalue < 0 || s_graphicsoptions.dlss.curvalue > 4
+	if ( s_graphicsoptions.dlss.curvalue < 0 || s_graphicsoptions.dlss.curvalue > 5
 		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
 		// DLSS is Vulkan + RTX only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.dlss.curvalue = 0;

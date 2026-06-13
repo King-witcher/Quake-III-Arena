@@ -351,7 +351,7 @@ qboolean VK_CreateSwapchain( void ) {
 	// evaluate when the SDK is present, otherwise a linear blit (still a real win
 	// since far fewer pixels are shaded).  See vk_dlss.c / DLSS_VULKAN_REFERENCE.md.
 	vk.dlssMode = r_dlss ? r_dlss->integer : 0;
-	if ( vk.dlssMode < VK_DLSS_OFF || vk.dlssMode > VK_DLSS_ULTRA_PERF ) {
+	if ( vk.dlssMode < VK_DLSS_OFF || vk.dlssMode > VK_DLSS_DLAA ) {
 		vk.dlssMode = VK_DLSS_OFF;
 	}
 	if ( vk.dlssMode != VK_DLSS_OFF ) {
@@ -361,11 +361,12 @@ qboolean VK_CreateSwapchain( void ) {
 			vk.ssaaFactor = 1;
 			vk.renderExtent.width  = rw;
 			vk.renderExtent.height = rh;
-			vk.ssaaScale = (float)rw / (float)vk.extent.width;	// < 1 (sub-display)
+			vk.ssaaScale = (float)rw / (float)vk.extent.width;	// <= 1 (sub-display; 1.0 for DLAA)
 			VK_DLSS_Init();
 			ri.Printf( PRINT_ALL, "...DLSS %s: rendering %ux%u -> %ux%u%s\n",
 				VK_DLSS_ModeName( vk.dlssMode ), rw, rh, vk.extent.width, vk.extent.height,
-				VK_DLSS_Available() ? " (NGX neural)" : " (linear upscale)" );
+				VK_DLSS_Available() ? " (NGX neural)" :
+					( vk.dlssMode == VK_DLSS_DLAA ? " (native FXAA)" : " (linear upscale)" ) );
 		} else {
 			vk.dlssMode = VK_DLSS_OFF;
 		}
