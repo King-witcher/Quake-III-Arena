@@ -1467,6 +1467,20 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		fovOffset = 0;
 	}
 
+	// widescreen weapon fix: cg_fov is the horizontal fov, so on aspect
+	// ratios wider than 4:3 the vertical fov shrinks and the gun sinks
+	// toward (or past) the bottom of the screen. Raise it back up so it
+	// sits at roughly its 4:3 vertical screen position. The amount scales
+	// with how much narrower the vertical fov became, and cg_gunWideAdjust
+	// is the effective vertical extent of the gun used as the reference
+	// (set to 0 to disable).
+	if ( cg_gunWideAdjust.value > 0 && cg.refdef.height > 0 ) {
+		float aspect = (float)cg.refdef.width / (float)cg.refdef.height;
+		if ( aspect > ( 4.0f / 3.0f ) ) {
+			fovOffset += cg_gunWideAdjust.value * ( 1.0f - ( 4.0f / 3.0f ) / aspect );
+		}
+	}
+
 	cent = &cg.predictedPlayerEntity;	// &cg_entities[cg.snap->ps.clientNum];
 	CG_RegisterWeapon( ps->weapon );
 	weapon = &cg_weapons[ ps->weapon ];

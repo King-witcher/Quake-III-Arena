@@ -131,6 +131,7 @@ vmCvar_t	cg_gun_frame;
 vmCvar_t	cg_gun_x;
 vmCvar_t	cg_gun_y;
 vmCvar_t	cg_gun_z;
+vmCvar_t	cg_gunWideAdjust;
 vmCvar_t	cg_tracerChance;
 vmCvar_t	cg_tracerWidth;
 vmCvar_t	cg_tracerLength;
@@ -241,6 +242,7 @@ static cvarTable_t cvarTable[] = { // bk001129
 	{ &cg_gun_x, "cg_gunX", "0", CVAR_CHEAT },
 	{ &cg_gun_y, "cg_gunY", "0", CVAR_CHEAT },
 	{ &cg_gun_z, "cg_gunZ", "0", CVAR_CHEAT },
+	{ &cg_gunWideAdjust, "cg_gunWideAdjust", "9", CVAR_ARCHIVE },
 	{ &cg_centertime, "cg_centertime", "3", CVAR_CHEAT },
 	{ &cg_runpitch, "cg_runpitch", "0.002", CVAR_ARCHIVE},
 	{ &cg_runroll, "cg_runroll", "0.005", CVAR_ARCHIVE },

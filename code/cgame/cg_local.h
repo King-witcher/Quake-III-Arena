@@ -1131,6 +1131,7 @@ extern	vmCvar_t		cg_autoswitch;
 extern	vmCvar_t		cg_ignore;
 extern	vmCvar_t		cg_simpleItems;
 extern	vmCvar_t		cg_fov;
+extern	vmCvar_t		cg_gunWideAdjust;
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
