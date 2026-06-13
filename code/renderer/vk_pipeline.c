@@ -414,7 +414,8 @@ Fullscreen-triangle pipeline (no vertex input, depth off, single sample, no dept
 attachment) targeting the swapchain format.  vert = fullscreen.vert.
 ================
 */
-static VkPipeline VK_CreatePostPipeline( const uint32_t *frag, size_t fragSize ) {
+static VkPipeline VK_CreatePostPipeline( const uint32_t *frag, size_t fragSize,
+										 VkFormat colorFormat, qboolean additive ) {
 	VkShaderModule							vert, fragMod;
 	VkPipelineShaderStageCreateInfo			stages[2];
 	VkPipelineVertexInputStateCreateInfo	vtxInput;
@@ -470,9 +471,22 @@ static VkPipeline VK_CreatePostPipeline( const uint32_t *frag, size_t fragSize )
 	memset( &depthStencil, 0, sizeof( depthStencil ) );	// no depth attachment
 	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 
-	memset( &blendAttach, 0, sizeof( blendAttach ) );	// opaque write
-	blendAttach.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-								 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	memset( &blendAttach, 0, sizeof( blendAttach ) );
+	if ( additive ) {
+		// frame-multisampling accumulate: dst += src (RGB only -- alpha must not grow)
+		blendAttach.blendEnable = VK_TRUE;
+		blendAttach.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttach.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttach.colorBlendOp = VK_BLEND_OP_ADD;
+		blendAttach.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttach.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		blendAttach.alphaBlendOp = VK_BLEND_OP_ADD;
+		blendAttach.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+									 VK_COLOR_COMPONENT_B_BIT;
+	} else {	// opaque write
+		blendAttach.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+									 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	}
 
 	memset( &blend, 0, sizeof( blend ) );
 	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -489,7 +503,7 @@ static VkPipeline VK_CreatePostPipeline( const uint32_t *frag, size_t fragSize )
 	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &vk.surfaceFormat.format;
+	renderingInfo.pColorAttachmentFormats = &colorFormat;
 	renderingInfo.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
 	renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
@@ -533,7 +547,7 @@ void VK_InitPostProcess( void ) {
 	VkPipelineLayoutCreateInfo	plInfo;
 	int							i;
 
-	if ( vk.aaMode == VK_AA_OFF ) {
+	if ( !VK_USES_OFFSCREEN() ) {
 		return;		// Off renders straight to the swapchain; no post pass
 	}
 
@@ -547,11 +561,13 @@ void VK_InitPostProcess( void ) {
 	sampInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	VK_CHECK( qvkCreateSampler( vk.device, &sampInfo, NULL, &vk.postSampler ) );
 
+	// VK_NUM_FRAMES offscreen sampler sets, plus one for the frame-multisampling
+	// accumulate buffer (sampled by the resolve pass) when that is enabled.
 	poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSize.descriptorCount = VK_NUM_FRAMES;
+	poolSize.descriptorCount = VK_NUM_FRAMES + 1;
 	memset( &poolInfo, 0, sizeof( poolInfo ) );
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.maxSets = VK_NUM_FRAMES;
+	poolInfo.maxSets = VK_NUM_FRAMES + 1;
 	poolInfo.poolSizeCount = 1;
 	poolInfo.pPoolSizes = &poolSize;
 	VK_CHECK( qvkCreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.postDescPool ) );
@@ -582,9 +598,29 @@ void VK_InitPostProcess( void ) {
 	// DLSS reuses the FXAA fullscreen pass to upscale its sub-display offscreen,
 	// so it needs pipeFXAA too (VK_EndFrame routes VK_AA_DLSS to VK_ResolveFXAA).
 	if ( vk.aaMode == VK_AA_FXAA || vk.aaMode == VK_AA_DLSS ) {
-		vk.pipeFXAA = VK_CreatePostPipeline( vk_spv_fxaa_frag, sizeof( vk_spv_fxaa_frag ) );
-	} else {	// VK_AA_SSAA
-		vk.pipeDownsample = VK_CreatePostPipeline( vk_spv_downsample_frag, sizeof( vk_spv_downsample_frag ) );
+		vk.pipeFXAA = VK_CreatePostPipeline( vk_spv_fxaa_frag, sizeof( vk_spv_fxaa_frag ),
+			vk.surfaceFormat.format, qfalse );
+	} else if ( vk.aaMode == VK_AA_SSAA ) {
+		vk.pipeDownsample = VK_CreatePostPipeline( vk_spv_downsample_frag, sizeof( vk_spv_downsample_frag ),
+			vk.surfaceFormat.format, qfalse );
+	}
+
+	// frame multisampling: an additive accumulate pass (offscreen -> float16 sum) and a
+	// resolve pass (sum x 1/frames -> held image).  Both reuse accum.frag + postLayout.
+	if ( vk.msFrames >= 2 ) {
+		VkDescriptorSetAllocateInfo	msAlloc;
+
+		memset( &msAlloc, 0, sizeof( msAlloc ) );
+		msAlloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		msAlloc.descriptorPool = vk.postDescPool;
+		msAlloc.descriptorSetCount = 1;
+		msAlloc.pSetLayouts = &vk.descriptorSetLayout;
+		VK_CHECK( qvkAllocateDescriptorSets( vk.device, &msAlloc, &vk.msAccumDesc ) );
+
+		vk.pipeMSAccum   = VK_CreatePostPipeline( vk_spv_accum_frag, sizeof( vk_spv_accum_frag ),
+			VK_FORMAT_R16G16B16A16_SFLOAT, qtrue );
+		vk.pipeMSResolve = VK_CreatePostPipeline( vk_spv_accum_frag, sizeof( vk_spv_accum_frag ),
+			vk.surfaceFormat.format, qfalse );
 	}
 
 	VK_UpdateOffscreenDescriptors();
@@ -602,7 +638,7 @@ vsync toggle) -- the sets persist in postDescPool but their bound view changes.
 void VK_UpdateOffscreenDescriptors( void ) {
 	int i;
 
-	if ( vk.aaMode == VK_AA_OFF || !vk.postDescPool ) {
+	if ( !VK_USES_OFFSCREEN() || !vk.postDescPool ) {
 		return;
 	}
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
@@ -625,6 +661,25 @@ void VK_UpdateOffscreenDescriptors( void ) {
 		write.pImageInfo = &imgInfo;
 		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
 	}
+
+	// point the resolve pass's sampler at the frame-multisampling accumulate buffer
+	if ( vk.msFrames >= 2 && vk.msAccumDesc && vk.msAccumView ) {
+		VkDescriptorImageInfo	imgInfo;
+		VkWriteDescriptorSet	write;
+
+		imgInfo.sampler = vk.postSampler;
+		imgInfo.imageView = vk.msAccumView;
+		imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		memset( &write, 0, sizeof( write ) );
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = vk.msAccumDesc;
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		write.pImageInfo = &imgInfo;
+		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
 }
 
 /*
@@ -641,6 +696,14 @@ void VK_ShutdownPostProcess( void ) {
 		qvkDestroyPipeline( vk.device, vk.pipeDownsample, NULL );
 		vk.pipeDownsample = VK_NULL_HANDLE;
 	}
+	if ( vk.pipeMSAccum ) {
+		qvkDestroyPipeline( vk.device, vk.pipeMSAccum, NULL );
+		vk.pipeMSAccum = VK_NULL_HANDLE;
+	}
+	if ( vk.pipeMSResolve ) {
+		qvkDestroyPipeline( vk.device, vk.pipeMSResolve, NULL );
+		vk.pipeMSResolve = VK_NULL_HANDLE;
+	}
 	if ( vk.postLayout ) {
 		qvkDestroyPipelineLayout( vk.device, vk.postLayout, NULL );
 		vk.postLayout = VK_NULL_HANDLE;
@@ -654,4 +717,5 @@ void VK_ShutdownPostProcess( void ) {
 		vk.postSampler = VK_NULL_HANDLE;
 	}
 	memset( vk.offscreenDesc, 0, sizeof( vk.offscreenDesc ) );
+	vk.msAccumDesc = VK_NULL_HANDLE;	// freed with postDescPool
 }

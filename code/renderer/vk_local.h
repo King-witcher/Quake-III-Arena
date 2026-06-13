@@ -216,6 +216,28 @@ typedef struct {
 	VkPipeline				pipeFXAA;		// FXAA edge blur (aaMode FXAA)
 	VkPipeline				pipeDownsample;	// SSAA box downsample (aaMode SSAA)
 
+	// frame multisampling / temporal accumulation (read once from r_frameMultisampling
+	// at swapchain create).  When msFrames >= 2 the scene renders into the offscreen
+	// target every frame and is additively blended into msAccumImage (a float16 sum
+	// buffer); every msFrames frames the sum is resolved (x 1/msFrames) into msHeldImage,
+	// which is blitted to the swapchain on every frame.  So the displayed content is the
+	// average of msFrames consecutive frames and refreshes fps/msFrames times a second.
+	// Mutually exclusive with FXAA/SSAA/DLSS (forced Off while on).  Single instance,
+	// NOT per-frame-in-flight: the running sum is serial across frames, ordered by image
+	// barriers + same-queue submission order.
+	int						msFrames;		// 0/1 = off, >=2 = frames blended per shown image
+	int						msCounter;		// 0..msFrames-1 position within the current window
+	qboolean				msHeldValid;	// msHeldImage has been resolved at least once
+	VkImage					msAccumImage;	// R16G16B16A16_SFLOAT running sum (native extent)
+	VkDeviceMemory			msAccumMemory;
+	VkImageView				msAccumView;
+	VkImage					msHeldImage;	// surfaceFormat resolved frame, blitted to swapchain
+	VkDeviceMemory			msHeldMemory;
+	VkImageView				msHeldView;
+	VkDescriptorSet			msAccumDesc;	// samples msAccumImage for the resolve pass
+	VkPipeline				pipeMSAccum;	// additive blend of the offscreen into msAccumImage
+	VkPipeline				pipeMSResolve;	// msAccumImage x 1/msFrames into msHeldImage
+
 	// live draw-recording state (set by the dispatched GL_* leaves)
 	struct {
 		float		mvp[16];			// push constant (final clip-space transform)
@@ -236,6 +258,10 @@ typedef struct {
 } vk_t;
 
 extern vk_t	vk;
+
+// The scene renders into the offscreen color target (instead of straight to the
+// swapchain) whenever AA needs a post pass OR frame multisampling needs to blend it.
+#define VK_USES_OFFSCREEN()		( vk.aaMode != VK_AA_OFF || vk.msFrames >= 2 )
 
 //
 // result checking

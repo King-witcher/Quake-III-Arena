@@ -36,6 +36,7 @@ cvar_t	*r_renderapi;
 cvar_t	*r_antialiasing;
 cvar_t	*r_textureAnisotropy;
 cvar_t	*r_dlss;
+cvar_t	*r_frameMultisampling;
 cvar_t	*r_flareSize;
 cvar_t	*r_flareFade;
 
@@ -985,12 +986,19 @@ void R_Register( void )
 	// 1 = Off, 2/4/8 = anisotropic filtering ratio.  Vulkan-only (inert under OpenGL);
 	// latched, applied on the next vid_restart like r_antialiasing.
 	r_textureAnisotropy = ri.Cvar_Get( "r_textureAnisotropy", "1", CVAR_ARCHIVE | CVAR_LATCH );
-	// NVIDIA DLSS upscaling.  0 = Off, 1 = Quality, 2 = Balanced, 3 = Performance,
-	// 4 = Ultra Performance, 5 = DLAA (native-res antialiasing, no upscale).  Vulkan-only
+	// NVIDIA DLSS upscaling.  0 = Off, 1 = DLAA (native-res antialiasing, no upscale),
+	// 2 = Quality, 3 = Balanced, 4 = Performance, 5 = Ultra Performance.  Vulkan-only
 	// and only effective on an RTX GPU with the NGX runtime present (see
 	// renderer/nvsdk_ngx/DLSS_VULKAN_REFERENCE.md); otherwise it transparently falls back
 	// to a plain upscale (DLAA resolves with a native-res FXAA pass).  Latched like r_antialiasing.
 	r_dlss = ri.Cvar_Get( "r_dlss", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// Frame multisampling (temporal accumulation): blend this many consecutive
+	// rendered frames into one displayed image -- useful at very high fps to turn
+	// extra frames into motion blur / temporal supersampling.  0 or 1 = Off, 2..N =
+	// frames blended per shown image (the shown content then updates fps/N times a
+	// second).  Vulkan-only; renders the scene at native res and is mutually
+	// exclusive with FXAA/SSAA/DLSS (they are ignored while it is on).  Latched.
+	r_frameMultisampling = ri.Cvar_Get( "r_frameMultisampling", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_glDriver = ri.Cvar_Get( "r_glDriver", OPENGL_DRIVER_NAME, CVAR_ARCHIVE | CVAR_LATCH );
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );

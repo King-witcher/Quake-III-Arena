@@ -38,11 +38,11 @@ const char	*VK_DLSS_ModeName( int mode );	// "Off"/"Quality"/.../"Ultra Performa
 // Mirrors the r_dlss cvar.  The numeric values are part of the cvar/menu ABI.
 typedef enum {
 	VK_DLSS_OFF			= 0,
-	VK_DLSS_QUALITY		= 1,	// render = display / 1.5
-	VK_DLSS_BALANCED	= 2,	// render = display / 1.724
-	VK_DLSS_PERFORMANCE	= 3,	// render = display / 2.0
-	VK_DLSS_ULTRA_PERF	= 4,	// render = display / 3.0
-	VK_DLSS_DLAA		= 5		// render = display (native res; pure AA, no upscale)
+	VK_DLSS_DLAA		= 1,	// render = display (native res; pure AA, no upscale)
+	VK_DLSS_QUALITY		= 2,	// render = display / 1.5
+	VK_DLSS_BALANCED	= 3,	// render = display / 1.724
+	VK_DLSS_PERFORMANCE	= 4,	// render = display / 2.0
+	VK_DLSS_ULTRA_PERF	= 5		// render = display / 3.0
 } vkDlssMode_t;
 
 // Extension discovery -- must run BEFORE the VkInstance / VkDevice is created.

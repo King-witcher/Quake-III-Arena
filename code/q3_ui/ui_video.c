@@ -270,6 +270,7 @@ typedef struct {
 	menulist_s		renderapi;
 	menulist_s		antialiasing;
 	menulist_s		dlss;
+	menulist_s		frameMS;
 	menuslider_s	tq;
 	menulist_s  	lighting;
 	menulist_s  	allow_extensions;
@@ -296,6 +297,7 @@ typedef struct
 	int renderapi;
 	int antialiasing;
 	int dlss;
+	int frameMS;
 } InitialVideoOptions_s;
 
 static InitialVideoOptions_s	s_ivo;
@@ -305,7 +307,14 @@ static graphicsoptions_t		s_graphicsoptions;
 // entirely under OpenGL by GraphicsOptions_UpdateMenuItems).
 static const char *aa_names_vk[] = { "Off", "FXAA", "SSAA 2x", "SSAA 4x", 0 };
 // DLSS is Vulkan + RTX only; likewise hidden under OpenGL.
-static const char *dlss_names_vk[] = { "Off", "Quality", "Balanced", "Performance", "Ultra Performance", "DLAA", 0 };
+static const char *dlss_names_vk[] = { "Off", "DLAA", "Quality", "Balanced", "Performance", "Ultra Performance", 0 };
+
+// Frame multisampling (temporal accumulation) is Vulkan-only; hidden under OpenGL.
+// curvalue indexes ms_frame_values[] for the r_frameMultisampling count (0/1 = Off,
+// 2..N = frames blended per shown image).
+static const char *ms_names_vk[] = { "Off", "2x", "3x", "4x", "6x", "8x", 0 };
+static const int   ms_frame_values[] = { 0, 2, 3, 4, 6, 8 };
+#define NUM_MS_VALUES ( sizeof( ms_frame_values ) / sizeof( ms_frame_values[0] ) )
 
 // Texture filtering.  The bilinear/trilinear mipmap modes (r_textureMode) work on both
 // backends; the anisotropic levels (r_textureAnisotropy) are Vulkan-only, so OpenGL only
@@ -354,6 +363,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.renderapi   = s_graphicsoptions.renderapi.curvalue;
 	s_ivo.antialiasing = s_graphicsoptions.antialiasing.curvalue;
 	s_ivo.dlss = s_graphicsoptions.dlss.curvalue;
+	s_ivo.frameMS = s_graphicsoptions.frameMS.curvalue;
 	s_ivo.extensions  = s_graphicsoptions.allow_extensions.curvalue;
 	s_ivo.tq          = s_graphicsoptions.tq.curvalue;
 	s_ivo.lighting    = s_graphicsoptions.lighting.curvalue;
@@ -449,11 +459,14 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.antialiasing.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 		s_graphicsoptions.dlss.curvalue = 0;
 		s_graphicsoptions.dlss.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
+		s_graphicsoptions.frameMS.curvalue = 0;
+		s_graphicsoptions.frameMS.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
 	}
 	else
 	{
 		s_graphicsoptions.antialiasing.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 		s_graphicsoptions.dlss.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+		s_graphicsoptions.frameMS.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 
 	// The anisotropic texture-filter levels are Vulkan-only too, but plain bilinear and
@@ -473,16 +486,30 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.filter.numitems  = 5;
 	}
 
-	// DLSS already performs its own temporal antialiasing, so the two are mutually
-	// exclusive: when DLSS is enabled, force antialiasing Off and grey out the control.
-	if ( vulkan && s_graphicsoptions.dlss.curvalue != 0 )
+	// FXAA/SSAA, DLSS and frame multisampling are mutually exclusive (each wants the
+	// scene rendered its own way).  Precedence: frame multisampling, then DLSS, then AA.
+	// Force the losers Off and grey whichever controls cannot currently be changed.
+	s_graphicsoptions.antialiasing.generic.flags &= ~QMF_GRAYED;
+	s_graphicsoptions.dlss.generic.flags &= ~QMF_GRAYED;
+	s_graphicsoptions.frameMS.generic.flags &= ~QMF_GRAYED;
+	if ( vulkan && s_graphicsoptions.frameMS.curvalue != 0 )
 	{
 		s_graphicsoptions.antialiasing.curvalue = 0;
 		s_graphicsoptions.antialiasing.generic.flags |= QMF_GRAYED;
+		s_graphicsoptions.dlss.curvalue = 0;
+		s_graphicsoptions.dlss.generic.flags |= QMF_GRAYED;
 	}
-	else
+	else if ( vulkan && s_graphicsoptions.dlss.curvalue != 0 )
 	{
-		s_graphicsoptions.antialiasing.generic.flags &= ~QMF_GRAYED;
+		s_graphicsoptions.antialiasing.curvalue = 0;
+		s_graphicsoptions.antialiasing.generic.flags |= QMF_GRAYED;
+		s_graphicsoptions.frameMS.curvalue = 0;
+		s_graphicsoptions.frameMS.generic.flags |= QMF_GRAYED;
+	}
+	else if ( vulkan && s_graphicsoptions.antialiasing.curvalue != 0 )
+	{
+		s_graphicsoptions.frameMS.curvalue = 0;
+		s_graphicsoptions.frameMS.generic.flags |= QMF_GRAYED;
 	}
 
 	s_graphicsoptions.apply.generic.flags |= QMF_HIDDEN|QMF_INACTIVE;
@@ -516,6 +543,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 	if ( s_ivo.dlss != s_graphicsoptions.dlss.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
+	if ( s_ivo.frameMS != s_graphicsoptions.frameMS.curvalue )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
@@ -563,6 +594,12 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	trap_Cvar_SetValue( "r_renderapi", s_graphicsoptions.renderapi.curvalue );
 	trap_Cvar_SetValue( "r_antialiasing", s_graphicsoptions.antialiasing.curvalue );
 	trap_Cvar_SetValue( "r_dlss", s_graphicsoptions.dlss.curvalue );
+	{
+		int msIdx = s_graphicsoptions.frameMS.curvalue;
+		if ( msIdx < 0 || msIdx >= NUM_MS_VALUES )
+			msIdx = 0;
+		trap_Cvar_SetValue( "r_frameMultisampling", ms_frame_values[msIdx] );
+	}
 	switch ( s_graphicsoptions.colordepth.curvalue )
 	{
 	case 0:
@@ -713,6 +750,22 @@ static void GraphicsOptions_SetMenuItems( void )
 		|| s_graphicsoptions.renderapi.curvalue == 0 ) {
 		// DLSS is Vulkan + RTX only, so force Off under OpenGL (and on bad values)
 		s_graphicsoptions.dlss.curvalue = 0;
+	}
+	// map the r_frameMultisampling frame count (0/1 = Off, 2..N) onto its menu index
+	{
+		int msVal = (int)trap_Cvar_VariableValue("r_frameMultisampling");
+		int idx, i;
+		idx = 0;
+		for ( i = 0; i < NUM_MS_VALUES; i++ ) {
+			if ( ms_frame_values[i] == msVal ) {
+				idx = i;
+				break;
+			}
+		}
+		if ( s_graphicsoptions.renderapi.curvalue == 0 ) {
+			idx = 0;	// Vulkan-only, force Off under OpenGL
+		}
+		s_graphicsoptions.frameMS.curvalue = idx;
 	}
 	s_graphicsoptions.allow_extensions.curvalue = trap_Cvar_VariableValue("r_allowExtensions");
 	s_graphicsoptions.tq.curvalue = 3-trap_Cvar_VariableValue( "r_picmip");
@@ -998,6 +1051,16 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.dlss.generic.x     = 400;
 	s_graphicsoptions.dlss.generic.y     = y;
 	s_graphicsoptions.dlss.itemnames     = dlss_names_vk;
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_frameMultisampling" (0/1 = Off, 2..N = frames blended into
+	// one shown image; temporal accumulation, Vulkan-only, hidden under OpenGL).
+	s_graphicsoptions.frameMS.generic.type  = MTYPE_SPINCONTROL;
+	s_graphicsoptions.frameMS.generic.name  = "Frame Multisampling:";
+	s_graphicsoptions.frameMS.generic.flags = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.frameMS.generic.x     = 400;
+	s_graphicsoptions.frameMS.generic.y     = y;
+	s_graphicsoptions.frameMS.itemnames     = ms_names_vk;
 	y += 2 * ( BIGCHAR_HEIGHT+2 );
 
 	// references "r_colorbits"
@@ -1105,6 +1168,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.allow_extensions );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.antialiasing );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.dlss );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.frameMS );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.colordepth );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.lighting );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.geometry );

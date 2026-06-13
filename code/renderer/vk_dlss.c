@@ -50,11 +50,11 @@ or (at your option) any later version.
 // ----------------------------------------------------------------------------
 static float DLSS_ModeRatio( vkDlssMode_t mode ) {
 	switch ( mode ) {
+		case VK_DLSS_DLAA:			return 1.0f;	// native res -- pure AA, no upscale
 		case VK_DLSS_QUALITY:		return 1.5f;
 		case VK_DLSS_BALANCED:		return 1.724f;
 		case VK_DLSS_PERFORMANCE:	return 2.0f;
 		case VK_DLSS_ULTRA_PERF:	return 3.0f;
-		case VK_DLSS_DLAA:			return 1.0f;	// native res -- pure AA, no upscale
 		default:					return 1.0f;	// Off
 	}
 }
@@ -112,7 +112,7 @@ qboolean VK_DLSS_RenderResolution( vkDlssMode_t mode, uint32_t outW, uint32_t ou
 								   uint32_t *renderW, uint32_t *renderH ) {
 	float ratio;
 
-	if ( mode <= VK_DLSS_OFF || mode > VK_DLSS_DLAA ) {
+	if ( mode <= VK_DLSS_OFF || mode > VK_DLSS_ULTRA_PERF ) {
 		return qfalse;
 	}
 

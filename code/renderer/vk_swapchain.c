@@ -182,11 +182,99 @@ static qboolean VK_CreateDepthBuffer( void ) {
 
 /*
 ================
+VK_CreateImageSimple
+
+Create a device-local 2D color image + view of the given format/extent/usage.
+Helper for the single-instance frame-multisampling targets.
+================
+*/
+static void VK_CreateImageSimple( VkFormat format, uint32_t w, uint32_t h, VkImageUsageFlags usage,
+								   VkImage *image, VkDeviceMemory *memory, VkImageView *view ) {
+	VkImageCreateInfo		imageInfo;
+	VkMemoryRequirements	memReq;
+	VkMemoryAllocateInfo	allocInfo;
+	VkImageViewCreateInfo	viewInfo;
+
+	memset( &imageInfo, 0, sizeof( imageInfo ) );
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.format = format;
+	imageInfo.extent.width = w;
+	imageInfo.extent.height = h;
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = usage;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VK_CHECK( qvkCreateImage( vk.device, &imageInfo, NULL, image ) );
+
+	qvkGetImageMemoryRequirements( vk.device, *image, &memReq );
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memReq.size;
+	allocInfo.memoryTypeIndex = VK_FindMemoryType( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+	VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, memory ) );
+	VK_CHECK( qvkBindImageMemory( vk.device, *image, *memory, 0 ) );
+
+	memset( &viewInfo, 0, sizeof( viewInfo ) );
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = *image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = format;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.layerCount = 1;
+	VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, view ) );
+}
+
+/*
+================
+VK_CreateMSTargets
+
+Frame-multisampling targets (single instance, native extent): the float16 running
+sum the offscreen frames are added into, and the resolved "held" frame blitted to
+the swapchain.  See the msFrames notes in vk_local.h.
+================
+*/
+static void VK_CreateMSTargets( void ) {
+	if ( vk.msFrames < 2 ) {
+		return;
+	}
+	// running sum: rendered into (additive) and sampled by the resolve pass
+	VK_CreateImageSimple( VK_FORMAT_R16G16B16A16_SFLOAT, vk.extent.width, vk.extent.height,
+		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		&vk.msAccumImage, &vk.msAccumMemory, &vk.msAccumView );
+	// held resolved frame: rendered into by the resolve pass, blitted to the swapchain
+	VK_CreateImageSimple( vk.surfaceFormat.format, vk.extent.width, vk.extent.height,
+		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		&vk.msHeldImage, &vk.msHeldMemory, &vk.msHeldView );
+}
+
+/*
+================
+VK_DestroyMSTargets
+================
+*/
+static void VK_DestroyMSTargets( void ) {
+	if ( vk.msAccumView )   { qvkDestroyImageView( vk.device, vk.msAccumView, NULL );  vk.msAccumView = VK_NULL_HANDLE; }
+	if ( vk.msAccumImage )  { qvkDestroyImage( vk.device, vk.msAccumImage, NULL );     vk.msAccumImage = VK_NULL_HANDLE; }
+	if ( vk.msAccumMemory ) { qvkFreeMemory( vk.device, vk.msAccumMemory, NULL );      vk.msAccumMemory = VK_NULL_HANDLE; }
+	if ( vk.msHeldView )    { qvkDestroyImageView( vk.device, vk.msHeldView, NULL );   vk.msHeldView = VK_NULL_HANDLE; }
+	if ( vk.msHeldImage )   { qvkDestroyImage( vk.device, vk.msHeldImage, NULL );      vk.msHeldImage = VK_NULL_HANDLE; }
+	if ( vk.msHeldMemory )  { qvkFreeMemory( vk.device, vk.msHeldMemory, NULL );       vk.msHeldMemory = VK_NULL_HANDLE; }
+}
+
+/*
+================
 VK_CreateOffscreenTargets
 
 For FXAA/SSAA the scene renders into a per-frame offscreen color image (sized to
-renderExtent) instead of straight to the swapchain; VK_EndFrame resolves it.  Off
-mode needs no offscreen image.  Per-frame-in-flight, like the depth buffer.
+renderExtent) instead of straight to the swapchain; VK_EndFrame resolves it.  Frame
+multisampling also uses it (at native res).  Off mode needs no offscreen image.
+Per-frame-in-flight, like the depth buffer.
 ================
 */
 static qboolean VK_CreateOffscreenTargets( void ) {
@@ -196,7 +284,7 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 	VkImageViewCreateInfo	viewInfo;
 	int						i;
 
-	if ( vk.aaMode == VK_AA_OFF ) {
+	if ( !VK_USES_OFFSCREEN() ) {
 		return qtrue;
 	}
 
@@ -240,6 +328,7 @@ static qboolean VK_CreateOffscreenTargets( void ) {
 		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &vk.offscreenView[i] ) );
 	}
 
+	VK_CreateMSTargets();
 	return qtrue;
 }
 
@@ -250,6 +339,8 @@ VK_DestroyOffscreenTargets
 */
 static void VK_DestroyOffscreenTargets( void ) {
 	int i;
+
+	VK_DestroyMSTargets();
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
 		if ( vk.offscreenView[i] ) {
@@ -345,13 +436,30 @@ qboolean VK_CreateSwapchain( void ) {
 	vk.renderExtent.width  = vk.extent.width  * vk.ssaaFactor;
 	vk.renderExtent.height = vk.extent.height * vk.ssaaFactor;
 
+	// Frame multisampling (temporal accumulation): blend msFrames consecutive frames
+	// into one shown image.  Latched (read once here).  It is mutually exclusive with
+	// FXAA/SSAA/DLSS: the scene renders at native res into the offscreen target and is
+	// summed in a separate float16 buffer, so force plain native rendering when it is on.
+	vk.msFrames = r_frameMultisampling ? r_frameMultisampling->integer : 0;
+	vk.msCounter = 0;
+	vk.msHeldValid = qfalse;
+	if ( vk.msFrames < 2 ) {
+		vk.msFrames = 0;
+	} else {
+		vk.aaMode = VK_AA_OFF;
+		vk.ssaaFactor = 1;
+		vk.ssaaScale = 1.0f;
+		vk.renderExtent = vk.extent;
+		ri.Printf( PRINT_ALL, "...frame multisampling: blending %d frames per shown image\n", vk.msFrames );
+	}
+
 	// DLSS upscaling takes precedence over plain AA: render the scene into a
 	// sub-display offscreen target (renderExtent) and upscale to the swapchain in
 	// VK_EndFrame.  We reuse the offscreen plumbing; the resolve is the NGX neural
 	// evaluate when the SDK is present, otherwise a linear blit (still a real win
 	// since far fewer pixels are shaded).  See vk_dlss.c / DLSS_VULKAN_REFERENCE.md.
-	vk.dlssMode = r_dlss ? r_dlss->integer : 0;
-	if ( vk.dlssMode < VK_DLSS_OFF || vk.dlssMode > VK_DLSS_DLAA ) {
+	vk.dlssMode = ( r_dlss && vk.msFrames < 2 ) ? r_dlss->integer : 0;	// MS is exclusive with DLSS
+	if ( vk.dlssMode < VK_DLSS_OFF || vk.dlssMode > VK_DLSS_ULTRA_PERF ) {
 		vk.dlssMode = VK_DLSS_OFF;
 	}
 	if ( vk.dlssMode != VK_DLSS_OFF ) {

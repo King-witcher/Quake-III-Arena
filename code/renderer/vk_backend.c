@@ -135,7 +135,7 @@ void VK_BeginFrame( void ) {
 	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
 	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
 	// viewport and are sized to renderExtent (= swapchain extent, or 2x under SSAA).
-	if ( vk.aaMode != VK_AA_OFF ) {
+	if ( VK_USES_OFFSCREEN() ) {
 		colorImage = vk.offscreenImage[frame];
 		colorView  = vk.offscreenView[frame];
 	} else {
@@ -520,6 +520,177 @@ static void VK_SwapchainToPresent( VkImageLayout from ) {
 
 /*
 ================
+VK_ResolveFrameMultisampling
+
+Temporal accumulation.  The scene for this frame is in the offscreen color image.
+Add it into the float16 running sum (msAccumImage); once every msFrames frames,
+resolve the sum (x 1/msFrames) into msHeldImage.  The held image is copied to the
+swapchain on EVERY frame, so the displayed picture is the average of msFrames
+consecutive frames and refreshes fps/msFrames times a second.  This keeps the
+acquire/present cycle untouched -- only the swapchain CONTENTS update every msFrames
+frames.  Leaves the swapchain in TRANSFER_DST (handled by VK_SwapchainToPresent).
+
+msAccumImage/msHeldImage are single-instance (the running sum is serial across
+frames); correctness across the two frames-in-flight comes from these image barriers
+plus same-queue submission order.
+================
+*/
+static void VK_ResolveFrameMultisampling( void ) {
+	VkRenderingAttachmentInfo	colorAttachment;
+	VkRenderingInfo				renderingInfo;
+	VkViewport					vp;
+	VkRect2D					sc;
+	float						scale;
+	int							frame = vk.frameIndex;
+	qboolean					firstOfWindow = ( vk.msCounter == 0 );
+	qboolean					lastOfWindow  = ( vk.msCounter == vk.msFrames - 1 );
+
+	// offscreen scene color: COLOR_ATTACHMENT -> shader read (sampled by the accumulate)
+	VK_ImageBarrier( vk.offscreenImage[frame], VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+
+	// running sum -> color attachment.  First frame of a window CLEARs it (old contents
+	// discarded); the rest LOAD and add.  The wide src scope orders this after BOTH the
+	// previous frame's accumulate write and the previous window's resolve read (the same
+	// single image is touched by consecutive in-flight frames).
+	VK_ImageBarrier( vk.msAccumImage, VK_IMAGE_ASPECT_COLOR_BIT,
+		firstOfWindow ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+	memset( &colorAttachment, 0, sizeof( colorAttachment ) );
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageView = vk.msAccumView;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = firstOfWindow ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.clearValue.color.float32[0] = 0.0f;
+	colorAttachment.clearValue.color.float32[1] = 0.0f;
+	colorAttachment.clearValue.color.float32[2] = 0.0f;
+	colorAttachment.clearValue.color.float32[3] = 0.0f;
+
+	memset( &renderingInfo, 0, sizeof( renderingInfo ) );
+	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderingInfo.renderArea.extent = vk.extent;
+	renderingInfo.layerCount = 1;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachments = &colorAttachment;
+
+	// POSITIVE-height viewport (same as the FXAA resolve): a 1:1 sample->store copy.
+	memset( &vp, 0, sizeof( vp ) );
+	vp.x = 0.0f;
+	vp.y = 0.0f;
+	vp.width = (float)vk.extent.width;
+	vp.height = (float)vk.extent.height;
+	vp.minDepth = 0.0f;
+	vp.maxDepth = 1.0f;
+	sc.offset.x = 0;
+	sc.offset.y = 0;
+	sc.extent = vk.extent;
+
+	qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+	qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+	qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+	qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeMSAccum );
+	qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.postLayout,
+		0, 1, &vk.offscreenDesc[frame], 0, NULL );
+	scale = 1.0f;
+	qvkCmdPushConstants( vk.cmd, vk.postLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( scale ), &scale );
+	qvkCmdDraw( vk.cmd, 3, 1, 0, 0 );
+	qvkCmdEndRendering( vk.cmd );
+
+	// resolve (last frame of a window only): held = sum / msFrames
+	if ( lastOfWindow ) {
+		VK_ImageBarrier( vk.msAccumImage, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+
+		// held -> color attachment (DONT_CARE: every pixel overwritten).  src=TRANSFER
+		// orders the write after the previous frame's copy that read the held image.
+		VK_ImageBarrier( vk.msHeldImage, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+		colorAttachment.imageView = vk.msHeldView;
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+
+		qvkCmdBeginRendering( vk.cmd, &renderingInfo );
+		qvkCmdSetViewport( vk.cmd, 0, 1, &vp );
+		qvkCmdSetScissor( vk.cmd, 0, 1, &sc );
+		qvkCmdBindPipeline( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeMSResolve );
+		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.postLayout,
+			0, 1, &vk.msAccumDesc, 0, NULL );
+		scale = 1.0f / (float)vk.msFrames;
+		qvkCmdPushConstants( vk.cmd, vk.postLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( scale ), &scale );
+		qvkCmdDraw( vk.cmd, 3, 1, 0, 0 );
+		qvkCmdEndRendering( vk.cmd );
+
+		vk.msHeldValid = qtrue;
+	}
+
+	// copy the held frame to the swapchain (every frame)
+	if ( !vk.msHeldValid ) {
+		// no resolved frame yet (first partial window): clear the swapchain to black
+		VkClearColorValue		black;
+		VkImageSubresourceRange	range;
+
+		VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			0, VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+
+		memset( &black, 0, sizeof( black ) );
+		memset( &range, 0, sizeof( range ) );
+		range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		range.levelCount = 1;
+		range.layerCount = 1;
+		qvkCmdClearColorImage( vk.cmd, vk.swapchainImages[vk.swapchainIndex],
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range );
+	} else {
+		VkImageBlit	region;
+
+		// held -> transfer src.  Just-resolved frames leave it in COLOR_ATTACHMENT; the
+		// held (between-resolve) frames leave it in TRANSFER_SRC from the previous copy.
+		VK_ImageBarrier( vk.msHeldImage, VK_IMAGE_ASPECT_COLOR_BIT,
+			lastOfWindow ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			lastOfWindow ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
+			VK_ACCESS_TRANSFER_READ_BIT,
+			lastOfWindow ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT );
+
+		VK_ImageBarrier( vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			0, VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+
+		memset( &region, 0, sizeof( region ) );
+		region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.srcSubresource.layerCount = 1;
+		region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.dstSubresource.layerCount = 1;
+		region.srcOffsets[1].x = vk.extent.width;
+		region.srcOffsets[1].y = vk.extent.height;
+		region.srcOffsets[1].z = 1;
+		region.dstOffsets[1].x = vk.extent.width;
+		region.dstOffsets[1].y = vk.extent.height;
+		region.dstOffsets[1].z = 1;
+		qvkCmdBlitImage( vk.cmd,
+			vk.msHeldImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			vk.swapchainImages[vk.swapchainIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &region, VK_FILTER_NEAREST );
+	}
+}
+
+/*
+================
 VK_EndFrame
 
 Close the pass, submit and present.  Dispatched from RB_SwapBuffers.
@@ -541,22 +712,29 @@ void VK_EndFrame( void ) {
 
 	// resolve the offscreen scene color into the swapchain (FXAA = shader pass,
 	// SSAA = downsampling blit); Off rendered straight into the swapchain already.
-	if ( vk.on2DTarget ) {
-		// DLSS: the scene was already upscaled to the swapchain in VK_Set2D and the 2D
-		// overlay was drawn straight onto it at native res -- nothing left to resolve.
-	} else if ( vk.aaMode == VK_AA_FXAA ) {
-		VK_ResolveFXAA();
-	} else if ( vk.aaMode == VK_AA_SSAA ) {
-		VK_ResolveSSAA();
-	} else if ( vk.aaMode == VK_AA_DLSS ) {
-		// DLSS frame that drew no 2D (rare): upscale the offscreen now.  The fullscreen
-		// FXAA pass samples it through a linear sampler, upscaling to the swapchain.
-		// UPGRADE PATH: when an NGX feature is live and a render-res motion-vector
-		// buffer is produced, call VK_DLSS_Evaluate(...) here instead (see vk_dlss.c).
-		VK_ResolveFXAA();
+	if ( vk.msFrames >= 2 ) {
+		// frame multisampling owns the present: accumulate this frame and copy the held
+		// (averaged) frame to the swapchain.  Leaves the swapchain in TRANSFER_DST.
+		VK_ResolveFrameMultisampling();
+		swapLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	} else {
+		if ( vk.on2DTarget ) {
+			// DLSS: the scene was already upscaled to the swapchain in VK_Set2D and the 2D
+			// overlay was drawn straight onto it at native res -- nothing left to resolve.
+		} else if ( vk.aaMode == VK_AA_FXAA ) {
+			VK_ResolveFXAA();
+		} else if ( vk.aaMode == VK_AA_SSAA ) {
+			VK_ResolveSSAA();
+		} else if ( vk.aaMode == VK_AA_DLSS ) {
+			// DLSS frame that drew no 2D (rare): upscale the offscreen now.  The fullscreen
+			// FXAA pass samples it through a linear sampler, upscaling to the swapchain.
+			// UPGRADE PATH: when an NGX feature is live and a render-res motion-vector
+			// buffer is produced, call VK_DLSS_Evaluate(...) here instead (see vk_dlss.c).
+			VK_ResolveFXAA();
+		}
+		// all resolve paths (and Off) leave the swapchain in COLOR_ATTACHMENT_OPTIMAL
+		swapLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	}
-	// all resolve paths (and Off) leave the swapchain in COLOR_ATTACHMENT_OPTIMAL
-	swapLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	if ( vk.screenshotPending ) {
 		VK_RecordScreenshotCopy( swapLayout );	// copies the image and transitions it to PRESENT
@@ -609,6 +787,9 @@ void VK_EndFrame( void ) {
 
 	vk.frameStarted = qfalse;
 	vk.frameIndex = ( frame + 1 ) % VK_NUM_FRAMES;
+	if ( vk.msFrames >= 2 ) {
+		vk.msCounter = ( vk.msCounter + 1 ) % vk.msFrames;	// advance the accumulation window
+	}
 }
 
 //==========================================================================
