@@ -2714,6 +2714,14 @@ void Com_Frame( void ) {
 	// we may want to spin here if things are going too fast
 	if ( !com_dedicated->integer && com_maxfps->integer > 0 && !com_timedemo->integer ) {
 		minMsec = 1000 / com_maxfps->integer;
+		// integer division: any com_maxfps above 1000 would truncate to 0,
+		// which lets multiple frames share the same integer millisecond. That
+		// produces 0 ms frame deltas, and downstream code (frame_msec, CL_KeyState)
+		// divides by the delta -> NaN movement and broken physics. The 1 ms clock
+		// makes 1000 fps the highest meaningful rate, so clamp the spin floor to 1.
+		if ( minMsec < 1 ) {
+			minMsec = 1;
+		}
 	} else {
 		minMsec = 1;
 	}

@@ -588,6 +588,14 @@ void CL_CreateNewCommands( void ) {
 
 	frame_msec = com_frameTime - old_com_frameTime;
 
+	// CL_KeyState divides the key-down time by frame_msec, so a zero delta
+	// (two frames inside the same integer millisecond, i.e. >1000 fps) would
+	// produce a NaN that ClampChar turns into -128 on every axis -> the player
+	// jitters and drifts. Never let the divisor reach zero.
+	if ( frame_msec < 1 ) {
+		frame_msec = 1;
+	}
+
 	// if running less than 5fps, truncate the extra time to prevent
 	// unexpected moves after a hitch
 	if ( frame_msec > 200 ) {
