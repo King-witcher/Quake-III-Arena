@@ -527,6 +527,7 @@ static void CG_DrawStatusBar( void ) {
 	centity_t	*cent;
 	playerState_t	*ps;
 	int			value;
+	qboolean	infinite;
 	vec4_t		hcolor;
 	vec3_t		angles;
 	vec3_t		origin;
@@ -550,10 +551,17 @@ static void CG_DrawStatusBar( void ) {
 	cent = &cg_entities[cg.snap->ps.clientNum];
 	ps = &cg.snap->ps;
 
+	// g_infiniteammo (published in CS_INFINITE_AMMO): hide the ammo readout entirely
+	// (like the gauntlet) for weapons that consume ammo -- no count, no icon, no model.
+	// The gauntlet / grappling hook already show nothing (their ammo is fixed at -1).
+	infinite = atoi( CG_ConfigString( CS_INFINITE_AMMO ) )
+		&& cent->currentState.weapon != WP_GAUNTLET
+		&& cent->currentState.weapon != WP_GRAPPLING_HOOK;
+
 	VectorClear( angles );
 
 	// draw any 3D icons first, so the changes back to 2D are minimized
-	if ( cent->currentState.weapon && cg_weapons[ cent->currentState.weapon ].ammoModel ) {
+	if ( !infinite && cent->currentState.weapon && cg_weapons[ cent->currentState.weapon ].ammoModel ) {
 		origin[0] = 70;
 		origin[1] = 0;
 		origin[2] = 0;
@@ -599,7 +607,8 @@ static void CG_DrawStatusBar( void ) {
 	//
 	if ( cent->currentState.weapon ) {
 		value = ps->ammo[cent->currentState.weapon];
-		if ( value > -1 ) {
+		// g_infiniteammo hides the readout entirely (no count, no icon)
+		if ( !infinite && value > -1 ) {
 			if ( cg.predictedPlayerState.weaponstate == WEAPON_FIRING
 				&& cg.predictedPlayerState.weaponTime > 100 ) {
 				// draw as dark grey when reloading
@@ -612,7 +621,7 @@ static void CG_DrawStatusBar( void ) {
 				}
 			}
 			trap_R_SetColor( colors[color] );
-			
+
 			CG_DrawField (0, 432, 3, value);
 			trap_R_SetColor( NULL );
 

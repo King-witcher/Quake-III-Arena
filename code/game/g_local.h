@@ -819,9 +819,12 @@ extern	vmCvar_t	g_velocity_bfg;
 extern	vmCvar_t	g_velocity_ng;			// nailgun base speed (mission pack)
 extern	vmCvar_t	g_velocity_pl;			// prox launcher (mission pack)
 
+extern	vmCvar_t	g_infiniteammo;			// weapons never consume ammo when set
+
 // weapon tuning helpers (g_main.c)
 void	G_WeaponFireTimes( int *times );	// fill times[MAX_WEAPONS] from the reload cvars
 void	G_UpdateWeaponConfig( void );		// (re)build the CS_WEAPON_RELOAD config string
+void	G_UpdateInfiniteAmmoConfig( void );	// (re)build the CS_INFINITE_AMMO config string
 
 void	trap_Printf( const char *fmt );
 void	trap_Error( const char *fmt );

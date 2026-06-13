@@ -40,6 +40,13 @@ void CG_CheckAmmo( void ) {
 	int		previous;
 	int		weapons;
 
+	// no low/out-of-ammo warning when g_infiniteammo is on (the HUD shows the
+	// infinity glyph instead); matches Quake Live
+	if ( atoi( CG_ConfigString( CS_INFINITE_AMMO ) ) ) {
+		cg.lowAmmoWarning = 0;
+		return;
+	}
+
 	// see about how many seconds of ammo we have remaining
 	weapons = cg.snap->ps.stats[ STAT_WEAPONS ];
 	total = 0;

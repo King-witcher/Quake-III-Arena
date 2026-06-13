@@ -1625,15 +1625,15 @@ static void PM_Weapon( void ) {
 
 	pm->ps->weaponstate = WEAPON_FIRING;
 
-	// check for out of ammo
-	if ( ! pm->ps->ammo[ pm->ps->weapon ] ) {
+	// check for out of ammo (g_infiniteammo lets every weapon keep firing)
+	if ( !pm->infiniteAmmo && ! pm->ps->ammo[ pm->ps->weapon ] ) {
 		PM_AddEvent( EV_NOAMMO );
 		pm->ps->weaponTime += 500;
 		return;
 	}
 
-	// take an ammo away if not infinite
-	if ( pm->ps->ammo[ pm->ps->weapon ] != -1 ) {
+	// take an ammo away if not infinite (-1 ammo or g_infiniteammo == never decrement)
+	if ( !pm->infiniteAmmo && pm->ps->ammo[ pm->ps->weapon ] != -1 ) {
 		pm->ps->ammo[ pm->ps->weapon ]--;
 	}
 

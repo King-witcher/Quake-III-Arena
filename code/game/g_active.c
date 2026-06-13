@@ -925,6 +925,10 @@ void ClientThink_real( gentity_t *ent ) {
 	// reads the same values from the CS_WEAPON_RELOAD config string)
 	G_WeaponFireTimes( pm.weaponFireTime );
 
+	// infinite ammo toggle (must match client prediction, which reads the same
+	// value from the CS_INFINITE_AMMO config string)
+	pm.infiniteAmmo = ( g_infiniteammo.integer != 0 );
+
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
 #ifdef MISSIONPACK

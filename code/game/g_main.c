@@ -115,6 +115,7 @@ vmCvar_t	g_velocity_gl;
 vmCvar_t	g_velocity_rl;
 vmCvar_t	g_velocity_pg;
 vmCvar_t	g_velocity_bfg;
+vmCvar_t	g_infiniteammo;
 #ifdef MISSIONPACK
 vmCvar_t	weapon_reload_ng;
 vmCvar_t	weapon_reload_pl;
@@ -260,6 +261,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_velocity_rl, "g_velocity_rl", "900", 0, 0, qfalse },
 	{ &g_velocity_pg, "g_velocity_pg", "2000", 0, 0, qfalse },
 	{ &g_velocity_bfg, "g_velocity_bfg", "2000", 0, 0, qfalse },
+	{ &g_infiniteammo, "g_infiniteammo", "0", 0, 0, qtrue },
 #ifdef MISSIONPACK
 	{ &weapon_reload_ng, "weapon_reload_ng", "1000", 0, 0, qfalse },
 	{ &weapon_reload_pl, "weapon_reload_pl", "800", 0, 0, qfalse },
@@ -493,6 +495,9 @@ void G_UpdateCvars( void ) {
 	// keep the client-side fire-rate config string in sync with the reload cvars
 	// (self-throttles: only re-sends when a value actually changed)
 	G_UpdateWeaponConfig();
+
+	// keep the client-side infinite-ammo flag in sync (self-throttles)
+	G_UpdateInfiniteAmmoConfig();
 }
 
 /*
@@ -559,6 +564,29 @@ void G_UpdateWeaponConfig( void ) {
 }
 
 /*
+=================
+G_UpdateInfiniteAmmoConfig
+
+Publish g_infiniteammo to clients via CS_INFINITE_AMMO so the cgame can mirror it
+into pmove (so client ammo prediction matches the server) and draw the QL-style
+infinity glyph on the HUD. Only re-sends the config string when the value changes.
+=================
+*/
+void G_UpdateInfiniteAmmoConfig( void ) {
+	char		current[MAX_INFO_STRING];
+	const char	*want;
+
+	want = g_infiniteammo.integer ? "1" : "0";
+
+	// compare against the live config string so a map change (which clears config
+	// strings) is detected and the value is re-sent.
+	trap_GetConfigstring( CS_INFINITE_AMMO, current, sizeof( current ) );
+	if ( strcmp( want, current ) ) {
+		trap_SetConfigstring( CS_INFINITE_AMMO, want );
+	}
+}
+
+/*
 ============
 G_InitGame
 
@@ -577,6 +605,9 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// publish per-weapon fire intervals for client prediction
 	G_UpdateWeaponConfig();
+
+	// publish the infinite-ammo flag for client prediction and the HUD glyph
+	G_UpdateInfiniteAmmoConfig();
 
 	G_ProcessIPBans();
 

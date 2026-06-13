@@ -82,6 +82,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	CS_WEAPON_RELOAD		26		// space-separated per-weapon fire intervals (ms), indexed by WP_*; used for client prediction
 
 #define	CS_ITEMS				27		// string of 0's and 1's that tell which items are present
+#define	CS_INFINITE_AMMO		28		// "1" when g_infiniteammo is on; drives the HUD infinity glyph and client ammo-decrement prediction
 
 #define	CS_MODELS				32
 #define	CS_SOUNDS				(CS_MODELS+MAX_MODELS)
@@ -173,6 +174,11 @@ typedef struct {
 	// cgame (from CS_WEAPON_RELOAD) so client prediction matches the server cadence.
 	// a value <= 0 means "use the built-in default" (see PM_Weapon).
 	int			weaponFireTime[MAX_WEAPONS];
+
+	// when set, weapons never run dry: PM_Weapon skips the ammo decrement and the
+	// out-of-ammo block. Filled by the game (from g_infiniteammo) and the cgame
+	// (from CS_INFINITE_AMMO) so client prediction matches the server.
+	qboolean	infiniteAmmo;
 
 	int			framecount;
 

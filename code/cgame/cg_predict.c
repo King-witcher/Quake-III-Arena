@@ -495,6 +495,10 @@ void CG_PredictPlayerState( void ) {
 	// CS_WEAPON_RELOAD, so firing prediction matches the server cadence
 	CG_SetWeaponFireTimes();
 
+	// infinite-ammo flag, published by the server in CS_INFINITE_AMMO, so the
+	// predicted ammo never drains out of step with the server
+	cg_pmove.infiniteAmmo = ( atoi( CG_ConfigString( CS_INFINITE_AMMO ) ) != 0 );
+
 	// save the state before the pmove so we can detect transitions
 	oldPlayerState = cg.predictedPlayerState;
 
