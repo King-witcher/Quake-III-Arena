@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // Number of frames the CPU may have in flight before waiting on the GPU.
 #define VK_NUM_FRAMES		2
+#define VK_LIGHT_MAX_VIEWS	16		// light-UBO ring slots per frame (main view + mirror/portal sub-views)
 
 // A swapchain rarely exceeds 3-4 images; cap generously.
 #define MAX_SWAPCHAIN_IMAGES	8
@@ -57,8 +58,20 @@ typedef struct {
 typedef enum {
 	VK_SHADER_SINGLE,			// vertexColor * tex0  (+ optional alpha test)
 	VK_SHADER_MULTI,			// two-texture combine (Phase 5)
+	VK_SHADER_LIT,				// diffuse*lightmap + per-pixel Blinn-Phong specular (r_perPixelLighting)
 	VK_SHADER_COUNT
 } vkShaderType_t;
+
+// Per-frame Blinn-Phong light data, bound as descriptor set 2 of the VK_SHADER_LIT
+// pipeline.  std140-compatible: every member is vec4-aligned.  Only lightmapped
+// world surfaces consume it; the specular term is added on top of the lightmap base.
+typedef struct {
+	float	viewOrigin[4];				// xyz world-space camera position
+	float	params[4];					// x=identityLight y=specExponent z=specScale w=numDlights
+	float	dlightPos[MAX_DLIGHTS][4];	// xyz world origin, w = radius
+	float	dlightColor[MAX_DLIGHTS][4];// rgb colour 0..1
+} vkLightUbo_t;
+// (the dominant lightgrid light is per-surface -> a fragment push constant, not here)
 
 // Antialiasing mode (mirrors r_antialiasing; read once at swapchain create).
 // Both non-Off modes render the scene into an offscreen color target which is
@@ -172,11 +185,28 @@ typedef struct {
 
 	// pipelines / descriptors / shaders (vk_pipeline.c)
 	VkDescriptorSetLayout	descriptorSetLayout;	// set N: one combined image sampler
-	VkPipelineLayout		pipelineLayout[3];		// index = number of descriptor sets (1 or 2)
+	VkPipelineLayout		pipelineLayout[4];		// index = number of descriptor sets (1, 2 or 3)
 	VkPipelineCache			pipelineCache;
 	VkShaderModule			shaderVert[VK_SHADER_COUNT];
 	VkShaderModule			shaderFrag[VK_SHADER_COUNT];
 	VkDescriptorPool		descriptorPool;
+
+	// Blinn-Phong per-pixel lighting (r_perPixelLighting): a per-frame uniform buffer
+	// (set 2 of pipelineLayout[3]) carrying the dominant lightgrid light + dynamic
+	// lights, plus its own descriptor set layout/pool.  The buffer is a ring of
+	// VK_LIGHT_MAX_VIEWS records so each view (main + mirror/portal sub-views) in a
+	// frame gets its own light data, selected by a DYNAMIC descriptor offset.
+	VkDescriptorSetLayout	lightUboLayout;
+	VkDescriptorPool		lightUboPool;
+	VkBuffer				lightUbo[VK_NUM_FRAMES];
+	VkDeviceMemory			lightUboMemory[VK_NUM_FRAMES];
+	void					*lightUboMapped[VK_NUM_FRAMES];
+	VkDescriptorSet			lightUboSet[VK_NUM_FRAMES];
+	uint32_t				lightUboStride;			// per-record stride (>= sizeof, alignment-rounded)
+	int						lightViewSlot;			// current ring slot, -1 at frame start
+	uint32_t				lightUboOffset;			// dynamic offset of the current slot
+	vec3_t					lightViewOrigin;		// vieworg the current slot was filled for
+	qboolean				lightUboFilled;			// is the current slot valid for this view
 
 	// antialiasing (read once from r_antialiasing at swapchain create)
 	int						aaMode;			// vkAAMode_t

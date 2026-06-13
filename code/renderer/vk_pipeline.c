@@ -85,6 +85,88 @@ static VkShaderModule VK_CreateShaderModule( const uint32_t *code, size_t size )
 
 /*
 ================
+VK_InitLightUbo
+
+Create the Blinn-Phong light uniform buffer's descriptor set layout, pool and
+per-frame sets (each permanently pointed at its frame's lightUbo buffer, which
+VK_CreateStreamingBuffers allocated just before us).  Used only by VK_SHADER_LIT.
+================
+*/
+static void VK_InitLightUbo( void ) {
+	VkDescriptorSetLayoutBinding	binding;
+	VkDescriptorSetLayoutCreateInfo	dslInfo;
+	VkDescriptorPoolSize			poolSize;
+	VkDescriptorPoolCreateInfo		poolInfo;
+	VkDescriptorSetAllocateInfo		allocInfo;
+	VkDescriptorSetLayout			layouts[VK_NUM_FRAMES];
+	int								i;
+
+	// set layout: binding 0 = a single DYNAMIC uniform buffer (the offset selects the
+	// per-view ring slot), fragment stage
+	memset( &binding, 0, sizeof( binding ) );
+	binding.binding = 0;
+	binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	binding.descriptorCount = 1;
+	binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	memset( &dslInfo, 0, sizeof( dslInfo ) );
+	dslInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	dslInfo.bindingCount = 1;
+	dslInfo.pBindings = &binding;
+	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &dslInfo, NULL, &vk.lightUboLayout ) );
+
+	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	poolSize.descriptorCount = VK_NUM_FRAMES;
+	memset( &poolInfo, 0, sizeof( poolInfo ) );
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.maxSets = VK_NUM_FRAMES;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	VK_CHECK( qvkCreateDescriptorPool( vk.device, &poolInfo, NULL, &vk.lightUboPool ) );
+
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		layouts[i] = vk.lightUboLayout;
+	}
+	memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = vk.lightUboPool;
+	allocInfo.descriptorSetCount = VK_NUM_FRAMES;
+	allocInfo.pSetLayouts = layouts;
+	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &allocInfo, vk.lightUboSet ) );
+
+	// the buffers persist for the lifetime of the device, so bind them once
+	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
+		VkDescriptorBufferInfo	bufInfo;
+		VkWriteDescriptorSet	write;
+
+		bufInfo.buffer = vk.lightUbo[i];
+		bufInfo.offset = 0;					// base; the per-view slot is a dynamic offset at bind time
+		bufInfo.range = sizeof( vkLightUbo_t );
+
+		memset( &write, 0, sizeof( write ) );
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = vk.lightUboSet[i];
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		write.pBufferInfo = &bufInfo;
+		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
+}
+
+static void VK_ShutdownLightUbo( void ) {
+	if ( vk.lightUboPool ) {
+		qvkDestroyDescriptorPool( vk.device, vk.lightUboPool, NULL );	// frees the sets
+		vk.lightUboPool = VK_NULL_HANDLE;
+	}
+	if ( vk.lightUboLayout ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.lightUboLayout, NULL );
+		vk.lightUboLayout = VK_NULL_HANDLE;
+	}
+}
+
+/*
+================
 VK_InitPipelines
 
 Build the descriptor-set layout, pipeline layouts, shader modules and pipeline
@@ -97,7 +179,7 @@ qboolean VK_InitPipelines( void ) {
 	VkDescriptorSetLayoutCreateInfo	dslInfo;
 	VkPushConstantRange				pushRange;
 	VkPipelineLayoutCreateInfo		plInfo;
-	VkDescriptorSetLayout			sets[2];
+	VkDescriptorSetLayout			sets[3];
 	VkPipelineCacheCreateInfo		cacheInfo;
 
 	// set N: a single combined image sampler, fragment stage
@@ -113,6 +195,9 @@ qboolean VK_InitPipelines( void ) {
 	dslInfo.pBindings = &binding;
 	VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &dslInfo, NULL, &vk.descriptorSetLayout ) );
 
+	// the Blinn-Phong light UBO set layout (set 2 of the lit pipeline)
+	VK_InitLightUbo();
+
 	// push constant: 4x4 MVP (64) + world-space clip plane vec4 (16), vertex stage
 	memset( &pushRange, 0, sizeof( pushRange ) );
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -121,6 +206,7 @@ qboolean VK_InitPipelines( void ) {
 
 	sets[0] = vk.descriptorSetLayout;
 	sets[1] = vk.descriptorSetLayout;
+	sets[2] = vk.lightUboLayout;
 
 	// layout with a single texture set (single-texture shader)
 	memset( &plInfo, 0, sizeof( plInfo ) );
@@ -135,12 +221,19 @@ qboolean VK_InitPipelines( void ) {
 	plInfo.setLayoutCount = 2;
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &plInfo, NULL, &vk.pipelineLayout[2] ) );
 
+	// layout with two texture sets + the light UBO (Blinn-Phong lit shader); same
+	// vertex-only push range as the others (specular is from the UBO's dynamic lights)
+	plInfo.setLayoutCount = 3;
+	VK_CHECK( qvkCreatePipelineLayout( vk.device, &plInfo, NULL, &vk.pipelineLayout[3] ) );
+
 	// shader modules (the multitexture pipeline reuses single.vert -- it already
 	// forwards both texcoord sets -- with a separate module to keep cleanup simple)
 	vk.shaderVert[VK_SHADER_SINGLE] = VK_CreateShaderModule( vk_spv_single_vert, sizeof( vk_spv_single_vert ) );
 	vk.shaderFrag[VK_SHADER_SINGLE] = VK_CreateShaderModule( vk_spv_single_frag, sizeof( vk_spv_single_frag ) );
 	vk.shaderVert[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_single_vert, sizeof( vk_spv_single_vert ) );
 	vk.shaderFrag[VK_SHADER_MULTI]  = VK_CreateShaderModule( vk_spv_multi_frag, sizeof( vk_spv_multi_frag ) );
+	vk.shaderVert[VK_SHADER_LIT]    = VK_CreateShaderModule( vk_spv_lit_vert, sizeof( vk_spv_lit_vert ) );
+	vk.shaderFrag[VK_SHADER_LIT]    = VK_CreateShaderModule( vk_spv_lit_frag, sizeof( vk_spv_lit_frag ) );
 
 	// seed the pipeline cache from disk if we saved one previously (faster warm-up;
 	// Vulkan validates the cache header and ignores incompatible/foreign data)
@@ -199,7 +292,9 @@ void VK_ShutdownPipelines( void ) {
 	}
 	if ( vk.pipelineLayout[1] ) { qvkDestroyPipelineLayout( vk.device, vk.pipelineLayout[1], NULL ); vk.pipelineLayout[1] = VK_NULL_HANDLE; }
 	if ( vk.pipelineLayout[2] ) { qvkDestroyPipelineLayout( vk.device, vk.pipelineLayout[2], NULL ); vk.pipelineLayout[2] = VK_NULL_HANDLE; }
+	if ( vk.pipelineLayout[3] ) { qvkDestroyPipelineLayout( vk.device, vk.pipelineLayout[3], NULL ); vk.pipelineLayout[3] = VK_NULL_HANDLE; }
 	if ( vk.descriptorSetLayout ) { qvkDestroyDescriptorSetLayout( vk.device, vk.descriptorSetLayout, NULL ); vk.descriptorSetLayout = VK_NULL_HANDLE; }
+	VK_ShutdownLightUbo();
 }
 
 /*
@@ -346,7 +441,7 @@ static VkPipeline VK_CreatePipeline( const vkPipelineKey_t *key ) {
 	renderingInfo.depthAttachmentFormat = vk.depthFormat;
 	renderingInfo.stencilAttachmentFormat = vk.depthFormat;
 
-	numSets = ( key->shaderType == VK_SHADER_MULTI ) ? 2 : 1;
+	numSets = ( key->shaderType == VK_SHADER_MULTI ) ? 2 : ( key->shaderType == VK_SHADER_LIT ) ? 3 : 1;
 
 	memset( &pipelineInfo, 0, sizeof( pipelineInfo ) );
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

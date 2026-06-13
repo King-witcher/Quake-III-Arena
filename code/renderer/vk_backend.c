@@ -131,6 +131,8 @@ void VK_BeginFrame( void ) {
 	vk.curExtent = vk.renderExtent;
 	vk.curScale  = vk.ssaaScale;
 	vk.on2DTarget = qfalse;
+	vk.lightUboFilled = qfalse;		// Blinn-Phong light UBO: refilled per view (see VK_FillLightUbo)
+	vk.lightViewSlot = -1;			// next lit view takes ring slot 0
 
 	// scene color target: the offscreen image for FXAA/SSAA (resolved to the swapchain
 	// in VK_EndFrame), or the swapchain itself for Off.  Both use a negative-height
@@ -1104,6 +1106,59 @@ void VK_Bind( int tmu, image_t *image ) {
 
 /*
 ================
+VK_FillLightUbo
+
+Pack this frame's Blinn-Phong light data (the dominant lightgrid light sampled at
+the view origin + the active dynamic lights) into the current frame's light UBO.
+Runs at most once per frame; the contents are constant across the frame's draws.
+================
+*/
+static void VK_FillLightUbo( void ) {
+	vkLightUbo_t	*ubo;
+	int				i, n;
+
+	// One ring slot per VIEW: a frame can hold several views (main + mirror/portal
+	// sub-views) and backEnd.refdef -- vieworg, dlights -- changes per view.  Reuse
+	// the current slot only while the view origin is unchanged; otherwise advance to
+	// a fresh slot so already-recorded draws keep their own light data.
+	if ( vk.lightUboFilled
+			&& vk.lightViewOrigin[0] == backEnd.refdef.vieworg[0]
+			&& vk.lightViewOrigin[1] == backEnd.refdef.vieworg[1]
+			&& vk.lightViewOrigin[2] == backEnd.refdef.vieworg[2] ) {
+		return;
+	}
+	if ( vk.lightViewSlot < VK_LIGHT_MAX_VIEWS - 1 ) {
+		vk.lightViewSlot++;					// clamp at the last slot if a frame ever exceeds the ring
+	}
+	vk.lightUboOffset = (uint32_t)vk.lightViewSlot * vk.lightUboStride;
+	ubo = (vkLightUbo_t *)( (byte *)vk.lightUboMapped[vk.frameIndex] + vk.lightUboOffset );
+
+	VectorCopy( backEnd.refdef.vieworg, ubo->viewOrigin );
+	ubo->viewOrigin[3] = 0.0f;
+
+	n = backEnd.refdef.num_dlights;
+	if ( n > MAX_DLIGHTS ) {
+		n = MAX_DLIGHTS;
+	}
+	for ( i = 0; i < n; i++ ) {
+		const dlight_t *dl = &backEnd.refdef.dlights[i];
+		VectorCopy( dl->origin, ubo->dlightPos[i] );
+		ubo->dlightPos[i][3] = dl->radius;
+		VectorCopy( dl->color, ubo->dlightColor[i] );
+		ubo->dlightColor[i][3] = 0.0f;
+	}
+
+	ubo->params[0] = tr.identityLight;			// share the lightmap's pre-gamma range
+	ubo->params[1] = r_specExponent->value;
+	ubo->params[2] = r_specScale->value;
+	ubo->params[3] = (float)n;
+
+	VectorCopy( backEnd.refdef.vieworg, vk.lightViewOrigin );
+	vk.lightUboFilled = qtrue;
+}
+
+/*
+================
 VK_DrawElements
 
 R_DrawElements leaf: stream the current tess batch into the frame's rings, pick
@@ -1198,7 +1253,27 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 	if ( key.shaderType == VK_SHADER_MULTI && !vk.shaderVert[VK_SHADER_MULTI] ) {
 		key.shaderType = VK_SHADER_SINGLE;
 	}
-	numSets = ( key.shaderType == VK_SHADER_MULTI ) ? 2 : 1;
+
+	// Per-pixel Blinn-Phong (r_perPixelLighting): upgrade lightmapped WORLD surfaces
+	// to the lit pipeline, which adds a specular term on top of the diffuse*lightmap
+	// base.  World-only (entities bake their lighting into vertex colours, which would
+	// double-count); collapsed-multitexture opaque surfaces only; no deforms (those
+	// rewrite geometry/normals); needs a lightgrid.  The normal is reconstructed in
+	// the shader from world-position derivatives, so no per-vertex normal is required.
+	if ( r_perPixelLighting->integer && key.shaderType == VK_SHADER_MULTI
+			&& backEnd.refdef.num_dlights > 0	// specular is dlight-only -> skip when no dynamic lights
+			&& key.multitexEnv == 0			// MODULATE only (genuine diffuse*lightmap)
+			&& !( key.stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) )	// unblended opaque base only
+			&& vk.draw.image[1] && vk.draw.image[1]->vkData	// lightmap set 1 must be bindable
+			&& vk.shaderVert[VK_SHADER_LIT]
+			&& backEnd.currentEntity == &tr.worldEntity
+			&& !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL )
+			&& tess.shader && tess.shader->numDeforms == 0
+			&& tr.world && tr.world->lightGridData ) {
+		key.shaderType = VK_SHADER_LIT;
+	}
+
+	numSets = ( key.shaderType == VK_SHADER_MULTI ) ? 2 : ( key.shaderType == VK_SHADER_LIT ) ? 3 : 1;
 	layout = vk.pipelineLayout[numSets];
 
 	pipeline = VK_GetPipeline( &key );
@@ -1212,9 +1287,14 @@ void VK_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 		vkimage_t *vki = (vkimage_t *)vk.draw.image[0]->vkData;
 		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &vki->descriptor, 0, NULL );
 	}
-	if ( numSets == 2 && vk.draw.image[1] && vk.draw.image[1]->vkData ) {
+	if ( numSets >= 2 && vk.draw.image[1] && vk.draw.image[1]->vkData ) {
 		vkimage_t *vki = (vkimage_t *)vk.draw.image[1]->vkData;
 		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &vki->descriptor, 0, NULL );
+	}
+	if ( key.shaderType == VK_SHADER_LIT ) {
+		VK_FillLightUbo();		// picks/refills this view's ring slot -> vk.lightUboOffset
+		qvkCmdBindDescriptorSets( vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1,
+			&vk.lightUboSet[vk.frameIndex], 1, &vk.lightUboOffset );
 	}
 
 	// depth bias (dynamic state is always present in the pipeline)

@@ -486,6 +486,20 @@ static void GraphicsOptions_UpdateMenuItems( void )
 		s_graphicsoptions.filter.numitems  = 5;
 	}
 
+	// Lighting: Blinn-Phong (item 2) is Vulkan-only.  Keep the row visible on both
+	// backends (Lightmap/Vertex work everywhere) but drop the third item under GL
+	// and snap a stored Blinn-Phong selection back to Lightmap.
+	if ( !vulkan )
+	{
+		s_graphicsoptions.lighting.numitems = 2;
+		if ( s_graphicsoptions.lighting.curvalue > 1 )
+			s_graphicsoptions.lighting.curvalue = 0;
+	}
+	else
+	{
+		s_graphicsoptions.lighting.numitems = 3;
+	}
+
 	// FXAA/SSAA, DLSS and frame multisampling are mutually exclusive (each wants the
 	// scene rendered its own way).  Precedence: frame multisampling, then DLSS, then AA.
 	// Force the losers Off and grey whichever controls cannot currently be changed.
@@ -617,7 +631,23 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 		trap_Cvar_SetValue( "r_depthbits", 24 );
 		break;
 	}
-	trap_Cvar_SetValue( "r_vertexLight", s_graphicsoptions.lighting.curvalue );
+	// Lighting selector: 0 Lightmap, 1 Vertex, 2 Blinn-Phong (Vulkan-only, adds a
+	// per-pixel specular layer on top of the lightmap so it needs vertexLight off).
+	switch ( s_graphicsoptions.lighting.curvalue )
+	{
+	case 2:
+		trap_Cvar_SetValue( "r_vertexLight", 0 );
+		trap_Cvar_SetValue( "r_perPixelLighting", 1 );
+		break;
+	case 1:
+		trap_Cvar_SetValue( "r_vertexLight", 1 );
+		trap_Cvar_SetValue( "r_perPixelLighting", 0 );
+		break;
+	default:
+		trap_Cvar_SetValue( "r_vertexLight", 0 );
+		trap_Cvar_SetValue( "r_perPixelLighting", 0 );
+		break;
+	}
 
 	if ( s_graphicsoptions.geometry.curvalue == 2 )
 	{
@@ -778,7 +808,14 @@ static void GraphicsOptions_SetMenuItems( void )
 		s_graphicsoptions.tq.curvalue = 3;
 	}
 
-	s_graphicsoptions.lighting.curvalue = trap_Cvar_VariableValue( "r_vertexLight" ) != 0;
+	// 0 Lightmap, 1 Vertex, 2 Blinn-Phong.  Blinn-Phong is Vulkan-only, so only pick
+	// it when the Vulkan backend is selected (renderapi.curvalue set just above).
+	if ( s_graphicsoptions.renderapi.curvalue != 0 && trap_Cvar_VariableValue( "r_perPixelLighting" ) != 0 )
+		s_graphicsoptions.lighting.curvalue = 2;
+	else if ( trap_Cvar_VariableValue( "r_vertexLight" ) != 0 )
+		s_graphicsoptions.lighting.curvalue = 1;
+	else
+		s_graphicsoptions.lighting.curvalue = 0;
 	switch ( ( int ) trap_Cvar_VariableValue( "r_texturebits" ) )
 	{
 	default:
@@ -891,6 +928,7 @@ void GraphicsOptions_MenuInit( void )
 	{
 		"Lightmap",
 		"Vertex",
+		"Blinn-Phong",		// Vulkan only (per-pixel specular over the lightmap)
 		0
 	};
 

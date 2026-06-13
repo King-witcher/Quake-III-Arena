@@ -104,6 +104,9 @@ cvar_t	*r_drawBuffer;
 cvar_t  *r_glDriver;
 cvar_t	*r_lightmap;
 cvar_t	*r_vertexLight;
+cvar_t	*r_perPixelLighting;	// Blinn-Phong specular layer (Vulkan only)
+cvar_t	*r_specExponent;		// Blinn-Phong specular sharpness
+cvar_t	*r_specScale;			// Blinn-Phong specular intensity
 cvar_t	*r_uiFullScreen;
 cvar_t	*r_shadows;
 cvar_t	*r_flares;
@@ -1037,6 +1040,9 @@ void R_Register( void )
 	r_customaspect = ri.Cvar_Get( "r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_simpleMipMaps = ri.Cvar_Get( "r_simpleMipMaps", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_vertexLight = ri.Cvar_Get( "r_vertexLight", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_perPixelLighting = ri.Cvar_Get( "r_perPixelLighting", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_specExponent = ri.Cvar_Get( "r_specExponent", "16", CVAR_ARCHIVE );
+	r_specScale = ri.Cvar_Get( "r_specScale", "0.5", CVAR_ARCHIVE );
 	r_uiFullScreen = ri.Cvar_Get( "r_uifullscreen", "0", 0);
 	r_subdivisions = ri.Cvar_Get ("r_subdivisions", "4", CVAR_ARCHIVE | CVAR_LATCH);
 #if (defined(MACOS_X) || defined(__linux__)) && defined(SMP)

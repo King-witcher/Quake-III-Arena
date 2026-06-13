@@ -79,7 +79,15 @@ persistently mapped so the CPU can append geometry without any staging copy.
 qboolean VK_CreateStreamingBuffers( void ) {
 	VkMemoryPropertyFlags	hostProps =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	VkDeviceSize			align = vk.devProps.limits.minUniformBufferOffsetAlignment;
 	int i;
+
+	// round the light-UBO record up to the device's dynamic-offset alignment so each
+	// ring slot is a legal dynamic offset (slot * stride is then always aligned).
+	vk.lightUboStride = (uint32_t)sizeof( vkLightUbo_t );
+	if ( align > 1 ) {
+		vk.lightUboStride = (uint32_t)( ( vk.lightUboStride + align - 1 ) & ~( align - 1 ) );
+	}
 
 	for ( i = 0; i < VK_NUM_FRAMES; i++ ) {
 		vk.vertexBuffer[i] = VK_CreateBuffer( VK_VERTEX_BUFFER_SIZE, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT );
@@ -87,6 +95,13 @@ qboolean VK_CreateStreamingBuffers( void ) {
 
 		vk.indexBuffer[i] = VK_CreateBuffer( VK_INDEX_BUFFER_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT );
 		vk.indexMemory[i] = VK_AllocBufferMemory( vk.indexBuffer[i], hostProps, (void **)&vk.indexMapped[i] );
+
+		// Blinn-Phong light data (set 2 of the VK_SHADER_LIT pipeline).  A ring of
+		// VK_LIGHT_MAX_VIEWS records per frame-in-flight (one per view), persistently
+		// mapped like the geometry rings; a dynamic descriptor offset picks the slot.
+		vk.lightUbo[i] = VK_CreateBuffer( (VkDeviceSize)vk.lightUboStride * VK_LIGHT_MAX_VIEWS,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT );
+		vk.lightUboMemory[i] = VK_AllocBufferMemory( vk.lightUbo[i], hostProps, &vk.lightUboMapped[i] );
 	}
 
 	vk.vertexOffset = 0;
@@ -122,6 +137,16 @@ void VK_DestroyStreamingBuffers( void ) {
 		if ( vk.indexBuffer[i] ) {
 			qvkDestroyBuffer( vk.device, vk.indexBuffer[i], NULL );
 			vk.indexBuffer[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.lightUboMemory[i] ) {
+			qvkUnmapMemory( vk.device, vk.lightUboMemory[i] );
+			qvkFreeMemory( vk.device, vk.lightUboMemory[i], NULL );
+			vk.lightUboMemory[i] = VK_NULL_HANDLE;
+			vk.lightUboMapped[i] = NULL;
+		}
+		if ( vk.lightUbo[i] ) {
+			qvkDestroyBuffer( vk.device, vk.lightUbo[i], NULL );
+			vk.lightUbo[i] = VK_NULL_HANDLE;
 		}
 	}
 }

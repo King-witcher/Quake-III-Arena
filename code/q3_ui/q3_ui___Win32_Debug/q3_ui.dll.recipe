@@ -2,7 +2,7 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>C:\code\id\Quake-III-Arena\code\q3_ui\q3_ui___Win32_Debug\q3_ui.dll</FullPath>
+      <FullPath>c:\code\id\Quake-III-Arena\code\q3_ui\q3_ui___Win32_Debug\q3_ui.dll</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />
