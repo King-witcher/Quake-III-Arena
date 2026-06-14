@@ -454,7 +454,7 @@ void CG_DamagePlum( int client, vec3_t org, int damage ) {
 	le->leFlags = 0;
 	le->leType = LE_DAMAGEPLUM;
 	le->startTime = cg.time;
-	le->endTime = cg.time + 1000 + 5 * min(damage, 300);
+	le->endTime = cg.time + 1000 + 5 * ( damage < 300 ? damage : 300 );
 	le->lifeRate = 1.0 / ( le->endTime - le->startTime );
 
 	// store the damage and pick a color by magnitude.
@@ -631,8 +631,6 @@ static void CG_LaunchGibModel( vec3_t origin, qhandle_t hModel, float velScale )
 }
 
 void CG_GibPlayer( vec3_t playerOrigin, int intensity ) {
-	Com_Printf("Gib intensity: %i\n", intensity);
-
 	float	velScale = (intensity - 2) * 0.25f;
 	int count = 1;
 	int n;

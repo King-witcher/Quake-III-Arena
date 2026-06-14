@@ -74,13 +74,18 @@ void main() {
 	for ( int i = 0; i < n; ++i ) {
 		vec3  toL = u_light.dlightPos[i].xyz - frag_worldPos;
 		float r   = u_light.dlightPos[i].w;
-		float d   = length( toL );
-		if ( d >= r ) {
-			continue;
-		}
-		vec3  Lp    = toL / max( d, 0.0001 );
-		float atten = 1.0 - d / r;
-		atten *= atten;
+		float d2  = dot( toL, toL );
+		float d   = sqrt( d2 );
+		vec3  Lp  = toL / max( d, 0.0001 );
+
+		// Infinite-range physical falloff, no radius cut.  A light of influence radius r
+		// has intrinsic intensity ~r^2 and attenuates by 1/d^2, so atten = r^2 / d^2.
+		// This normalises to exactly 1.0 at d == r (matching the old peak so specScale
+		// keeps its meaning), grows brighter closer in, and fades toward -- but never
+		// reaches -- zero with distance, so the light reaches everywhere like real life.
+		// d^2 is clamped to 1 unit to kill the 1/0 singularity at the source.
+		float atten = ( r * r ) / max( d2, 1.0 );
+
 		vec3  H = normalize( Lp + V );
 		spec += u_light.dlightColor[i].rgb * pow( max( dot( N, H ), 0.0 ), exponent ) * atten;
 	}

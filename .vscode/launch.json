@@ -36,9 +36,10 @@
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
                 "+set", "vm_ui", "0",
-                "+devmap", "q3dm1",
-                "+wait", "10",
-                "+give", "all"
+                "+devmap", "q3dm0",
+                "+wait", "200",
+                "+give", "all",
+                "+god"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -58,9 +59,10 @@
                 "+set", "vm_game", "0",
                 "+set", "vm_cgame", "0",
                 "+set", "vm_ui", "0",
-                "+devmap", "q3dm1",
-                "+wait", "10",
-                "+give", "all"
+                "+devmap", "q3dm0",
+                "+wait", "200",
+                "+give", "all",
+                "+god"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -80,9 +82,10 @@
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
                 "+set", "vm_ui", "1",
-                "+devmap", "q3dm1",
-                "+wait", "10",
-                "+give", "all"
+                "+devmap", "q3dm0",
+                "+wait", "200",
+                "+give", "all",
+                "+god"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
@@ -101,9 +104,10 @@
                 "+set", "vm_game", "1",
                 "+set", "vm_cgame", "1",
                 "+set", "vm_ui", "1",
-                "+devmap", "q3dm1",
-                "+wait", "10",
-                "+give", "all"
+                "+devmap", "q3dm0",
+                "+wait", "200",
+                "+give", "all",
+                "+god"
             ],
             "console": "integratedTerminal",
             "stopAtEntry": false
