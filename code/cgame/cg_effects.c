@@ -454,10 +454,11 @@ void CG_DamagePlum( int client, vec3_t org, int damage ) {
 	le->leFlags = 0;
 	le->leType = LE_DAMAGEPLUM;
 	le->startTime = cg.time;
-	le->endTime = cg.time + 1000 + 5 * damage;
+	le->endTime = cg.time + 1000 + 5 * min(damage, 300);
 	le->lifeRate = 1.0 / ( le->endTime - le->startTime );
 
-	// store the damage and pick a color by magnitude
+	// store the damage and pick a color by magnitude.
+	// radius is not clamped because it's used to store the damage
 	le->radius = damage;
 	le->color[0] = 1.0f;
 	le->color[1] = Com_Clamp(0.0f, 1.0f, 2.0f - damage / 50.0f);

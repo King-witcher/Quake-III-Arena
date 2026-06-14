@@ -960,7 +960,7 @@ void CG_DrawDamagePlums( void ) {
 		dmg = (int) le->radius;
 
 		// scale the text by damage
-		scale = ( 70 + dmg ) / 80.0f;
+		scale = min(( 70 + dmg ) / 80.0f, 4.0f);
 		cw = (int) ( DAMAGEPLUM_CHAR_WIDTH * scale );
 		ch = (int) ( DAMAGEPLUM_CHAR_HEIGHT * scale );
 		if ( cw < 1 ) {
