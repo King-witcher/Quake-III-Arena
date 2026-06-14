@@ -745,7 +745,7 @@ void CG_RegisterWeapon( int weaponNum ) {
 		weaponInfo->missileModel = trap_R_RegisterModel( "models/ammo/rocket/rocket.md3" );
 		weaponInfo->missileSound = trap_S_RegisterSound( "sound/weapons/rocket/rockfly.wav", qfalse );
 		weaponInfo->missileTrailFunc = CG_RocketTrail;
-		weaponInfo->missileDlight = 200;
+		weaponInfo->missileDlight = 150;
 		weaponInfo->wiTrailTime = 2000;
 		weaponInfo->trailRadius = 64;
 
@@ -795,7 +795,7 @@ void CG_RegisterWeapon( int weaponNum ) {
 //		weaponInfo->missileModel = cgs.media.invulnerabilityPowerupModel;
 		weaponInfo->missileTrailFunc = CG_PlasmaTrail;
 		weaponInfo->missileSound = trap_S_RegisterSound( "sound/weapons/plasma/lasfly.wav", qfalse );
-		weaponInfo->missileDlight = 150;
+		weaponInfo->missileDlight = 100;
 		MAKERGB( weaponInfo->missileDlightColor, 0.3f, 0.9f, 1.0f );
 		MAKERGB( weaponInfo->flashDlightColor, 0.3f, 0.9f, 1.0f );
 		weaponInfo->flashSound[0] = trap_S_RegisterSound( "sound/weapons/plasma/hyprbf1a.wav", qfalse );
@@ -1902,7 +1902,7 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 		sfx = cgs.media.sfx_rockexp;
 		mark = cgs.media.burnMarkShader;
 		radius = 64;
-		light = 300;
+		light = 200;
 		isSprite = qtrue;
 		duration = 1000;
 		lightColor[0] = 1;
@@ -1933,7 +1933,7 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 		sfx = cgs.media.sfx_plasmaexp;
 		mark = cgs.media.energyMarkShader;
 		radius = 32;
-		light = 100;
+		light = 80;
 		lightColor[0] = 0.3f;
 		lightColor[1] = 0.9f;
 		lightColor[2] = 1;
@@ -1947,7 +1947,7 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 		light = 300;
 		lightColor[0] = 0.2f;
 		lightColor[1] = 1;
-		lightColor[2] = 0.2f;
+		lightColor[2] = 0.3f;
 		isSprite = qtrue;
 		break;
 	case WP_SHOTGUN:
