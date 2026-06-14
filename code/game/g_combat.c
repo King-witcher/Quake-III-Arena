@@ -261,7 +261,7 @@ GibEntity
 void GibEntity( gentity_t *self, int killer ) {
 	gentity_t *ent;
 	int i;
-	int gibCount;
+	int intensity;
 
 	//if this entity still has kamikaze
 	if (self->s.eFlags & EF_KAMIKAZE) {
@@ -280,10 +280,16 @@ void GibEntity( gentity_t *self, int killer ) {
 	}
 
 	// the harder the killing blow drove the victim past the gib threshold,
-	// the more (and faster) the chunks; the client reads this off eventParm
-	gibCount = -self->health / 40;
+	// the more (and faster) the chunks; the client reads this off eventParm.
+	// eventParm is only 8 bits on the wire (msg.c: NETF(eventParm), 8), so a
+	// big overkill (-self->health up to 999) would wrap mod 256 and arrive as
+	// a small value. Clamp into 0..255 before sending.
+	intensity = -self->health / 10;
+	if ( intensity > 255 ) {
+		intensity = 255;
+	}
 
-	G_AddEvent( self, EV_GIB_PLAYER, gibCount );
+	G_AddEvent( self, EV_GIB_PLAYER, intensity );
 	self->takedamage = qfalse;
 	self->s.eType = ET_INVISIBLE;
 	self->r.contents = 0;

@@ -215,7 +215,7 @@ static void CG_Obituary( entityState_t *ent ) {
 		char	*s;
 
 		if ( cgs.gametype < GT_TEAM ) {
-			s = va("You fragged %s\n%s place with %i", targetName, 
+			s = va("You fragged %s\n%s place with %i", targetName,
 				CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),
 				cg.snap->ps.persistant[PERS_SCORE] );
 		} else {
@@ -224,7 +224,7 @@ static void CG_Obituary( entityState_t *ent ) {
 #ifdef MISSIONPACK
 		if (!(cg_singlePlayerActive.integer && cg_cameraOrbit.integer)) {
 			CG_CenterPrint( s, SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
-		} 
+		}
 #else
 		CG_CenterPrint( s, SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
 #endif
@@ -324,7 +324,7 @@ static void CG_Obituary( entityState_t *ent ) {
 		}
 
 		if (message) {
-			CG_Printf( "%s %s %s%s\n", 
+			CG_Printf( "%s %s %s%s\n",
 				targetName, message, attackerName, message2);
 			return;
 		}
@@ -348,7 +348,7 @@ static void CG_UseItem( centity_t *cent ) {
 	entityState_t *es;
 
 	es = &cent->currentState;
-	
+
 	itemNum = (es->event & ~EV_EVENT_BITS) - EV_USE_ITEM0;
 	if ( itemNum < 0 || itemNum > HI_NUM_HOLDABLE ) {
 		itemNum = 0;
@@ -443,7 +443,7 @@ void CG_PainEvent( centity_t *cent, int health ) {
 	} else {
 		snd = "*pain100_1.wav";
 	}
-	trap_S_StartSound( NULL, cent->currentState.number, CHAN_VOICE, 
+	trap_S_StartSound( NULL, cent->currentState.number, CHAN_VOICE,
 		CG_CustomSound( cent->currentState.number, snd ) );
 
 	// save pain time for programitic twitch animation
@@ -495,35 +495,35 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	case EV_FOOTSTEP:
 		DEBUGNAME("EV_FOOTSTEP");
 		if (cg_footsteps.integer) {
-			trap_S_StartSound (NULL, es->number, CHAN_BODY, 
+			trap_S_StartSound (NULL, es->number, CHAN_BODY,
 				cgs.media.footsteps[ ci->footsteps ][rand()&3] );
 		}
 		break;
 	case EV_FOOTSTEP_METAL:
 		DEBUGNAME("EV_FOOTSTEP_METAL");
 		if (cg_footsteps.integer) {
-			trap_S_StartSound (NULL, es->number, CHAN_BODY, 
+			trap_S_StartSound (NULL, es->number, CHAN_BODY,
 				cgs.media.footsteps[ FOOTSTEP_METAL ][rand()&3] );
 		}
 		break;
 	case EV_FOOTSPLASH:
 		DEBUGNAME("EV_FOOTSPLASH");
 		if (cg_footsteps.integer) {
-			trap_S_StartSound (NULL, es->number, CHAN_BODY, 
+			trap_S_StartSound (NULL, es->number, CHAN_BODY,
 				cgs.media.footsteps[ FOOTSTEP_SPLASH ][rand()&3] );
 		}
 		break;
 	case EV_FOOTWADE:
 		DEBUGNAME("EV_FOOTWADE");
 		if (cg_footsteps.integer) {
-			trap_S_StartSound (NULL, es->number, CHAN_BODY, 
+			trap_S_StartSound (NULL, es->number, CHAN_BODY,
 				cgs.media.footsteps[ FOOTSTEP_SPLASH ][rand()&3] );
 		}
 		break;
 	case EV_SWIM:
 		DEBUGNAME("EV_SWIM");
 		if (cg_footsteps.integer) {
-			trap_S_StartSound (NULL, es->number, CHAN_BODY, 
+			trap_S_StartSound (NULL, es->number, CHAN_BODY,
 				cgs.media.footsteps[ FOOTSTEP_SPLASH ][rand()&3] );
 		}
 		break;
@@ -603,12 +603,12 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 			vec3_t			up = {0, 0, 1};
 
 
-			smoke = CG_SmokePuff( cent->lerpOrigin, up, 
-						  32, 
+			smoke = CG_SmokePuff( cent->lerpOrigin, up,
+						  32,
 						  1, 1, 1, 0.33f,
-						  1000, 
+						  1000,
 						  cg.time, 0,
-						  LEF_PUFF_DONT_SCALE, 
+						  LEF_PUFF_DONT_SCALE,
 						  cgs.media.smokePuffShader );
 		}
 
@@ -1012,7 +1012,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 					else {
 					if (cgs.clientinfo[cg.clientNum].team == TEAM_BLUE) {
 #ifdef MISSIONPACK
-							if (cgs.gametype == GT_1FCTF) 
+							if (cgs.gametype == GT_1FCTF)
 								CG_AddBufferedSound( cgs.media.yourTeamTookTheFlagSound );
 							else
 #endif
@@ -1101,7 +1101,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	case EV_DEATH2:
 	case EV_DEATH3:
 		DEBUGNAME("EV_DEATHx");
-		trap_S_StartSound( NULL, es->number, CHAN_VOICE, 
+		trap_S_StartSound( NULL, es->number, CHAN_VOICE,
 				CG_CustomSound( es->number, va("*death%i.wav", event - EV_DEATH1 + 1) ) );
 		break;
 
