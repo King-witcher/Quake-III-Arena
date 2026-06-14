@@ -1932,8 +1932,8 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 		shader = cgs.media.plasmaExplosionShader;
 		sfx = cgs.media.sfx_plasmaexp;
 		mark = cgs.media.energyMarkShader;
-		radius = 16;
-		light = 75;
+		radius = 32;
+		light = 100;
 		lightColor[0] = 0.3f;
 		lightColor[1] = 0.9f;
 		lightColor[2] = 1;
