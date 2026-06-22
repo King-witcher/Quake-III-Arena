@@ -28,11 +28,11 @@ cvar_t		*cvar_vars;
 cvar_t		*cvar_cheats;
 int			cvar_modifiedFlags;
 
-#define	MAX_CVARS	1024
+#define	MAX_CVARS	4096
 cvar_t		cvar_indexes[MAX_CVARS];
 int			cvar_numIndexes;
 
-#define FILE_HASH_SIZE		256
+#define FILE_HASH_SIZE		1024
 static	cvar_t*		hashTable[FILE_HASH_SIZE];
 
 cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force);
@@ -51,7 +51,7 @@ static long generateHashValue( const char *fname ) {
 	i = 0;
 	while (fname[i] != '\0') {
 		letter = tolower(fname[i]);
-		hash+=(long)(letter)*(i+119);
+		hash+=(long)(letter)*(i+ 313);
 		i++;
 	}
 	hash &= (FILE_HASH_SIZE-1);
@@ -296,7 +296,7 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 #if 0	// FIXME
 	if ( value && !Cvar_ValidateString( value ) ) {
 		Com_Printf("invalid cvar value string: %s\n", value );
-		var_value = "BADVALUE";
+		value = "BADVALUE";
 	}
 #endif
 
@@ -327,14 +327,20 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 	{
 		if (var->flags & CVAR_ROM)
 		{
-			Com_Printf ("%s is read only.\n", var_name);
-			return var;
+			Com_Printf("%s e somente leitura.\n", var_name);
+			Com_Printf("Politica ignorada.\n");
 		}
 
 		if (var->flags & CVAR_INIT)
 		{
-			Com_Printf ("%s is write protected.\n", var_name);
-			return var;
+			Com_Printf ("%s e protegido contra leitura.\n", var_name);
+			Com_Printf("Politica ignorada.\n");
+		}
+
+		if ((var->flags & CVAR_CHEAT) && !cvar_cheats->integer)
+		{
+			Com_Printf("%s e protegida contra cheat.\n", var_name);
+			Com_Printf("Politica ignorada.\n");
 		}
 
 		if (var->flags & CVAR_LATCH)
@@ -351,19 +357,12 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 					return var;
 			}
 
-			Com_Printf ("%s will be changed upon restarting.\n", var_name);
+			Com_Printf ("%s mudara apos reinicio.\n", var_name);
 			var->latchedString = CopyString(value);
 			var->modified = qtrue;
 			var->modificationCount++;
 			return var;
 		}
-
-		if ( (var->flags & CVAR_CHEAT) && !cvar_cheats->integer )
-		{
-			Com_Printf ("%s is cheat protected.\n", var_name);
-			return var;
-		}
-
 	}
 	else
 	{

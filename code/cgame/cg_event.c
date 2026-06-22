@@ -248,51 +248,44 @@ static void CG_Obituary( entityState_t *ent ) {
 	if ( attacker != ENTITYNUM_WORLD ) {
 		switch (mod) {
 		case MOD_GRAPPLE:
-			message = "was caught by";
+			message = "foi pego pelo";
 			break;
 		case MOD_GAUNTLET:
-			message = "was pummeled by";
+			message = "foi espancado pelo";
 			break;
 		case MOD_MACHINEGUN:
-			message = "was machinegunned by";
+			message = "foi metralhado pelo";
 			break;
 		case MOD_SHOTGUN:
-			message = "was gunned down by";
+			message = "foi baleado pelo";
 			break;
 		case MOD_GRENADE:
-			message = "ate";
-			message2 = "'s grenade";
+			message = "engoliu a granada do";
 			break;
 		case MOD_GRENADE_SPLASH:
-			message = "was shredded by";
-			message2 = "'s shrapnel";
+			message = "foi despedaçado pelos estilhaços do";
 			break;
 		case MOD_ROCKET:
-			message = "ate";
-			message2 = "'s rocket";
+			message = "engoliu o foguete do";
 			break;
 		case MOD_ROCKET_SPLASH:
-			message = "almost dodged";
-			message2 = "'s rocket";
+			message = "quase que escapa do foguete do";
 			break;
 		case MOD_PLASMA:
-			message = "was melted by";
-			message2 = "'s plasmagun";
+			message = "foi derretido pela plasma do";
 			break;
 		case MOD_PLASMA_SPLASH:
-			message = "was melted by";
-			message2 = "'s plasmagun";
+			message = "foi derretido pela plasma do";
 			break;
 		case MOD_RAILGUN:
-			message = "was railed by";
+			message = "tomou uma rail do";
 			break;
 		case MOD_LIGHTNING:
-			message = "was electrocuted by";
+			message = "foi eletrocutado pelo";
 			break;
 		case MOD_BFG:
 		case MOD_BFG_SPLASH:
-			message = "was blasted by";
-			message2 = "'s BFG";
+			message = "foi explodido pela BFG do";
 			break;
 #ifdef MISSIONPACK
 		case MOD_NAIL:
